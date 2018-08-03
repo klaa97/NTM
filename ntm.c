@@ -10,11 +10,11 @@
 /* Costanti moltiplicative */
 #define STATES_S 10
 #define STATES_E 2
-#define HASH_MOD 6
+#define HASH_MOD 33
 #define S_FINAL 10
-#define STR_IN 2000
-#define STR_RIGHT 2
-#define STR_LEFT 2
+#define STR_IN 20
+#define STR_RIGHT 8
+#define STR_LEFT 8
 
 //libc libraries
 #include <stdio.h>
@@ -189,7 +189,7 @@ void readfinal(){
     int temp;
     scanf("acc");
     while (scanf("%d",&temp)==1){
-        if (n>S_FINAL) {
+        if (n>=S_FINAL) {
             nfinal = nfinal+S_FINAL;
             final = realloc(final,sizeof(int)*nfinal);
         }
@@ -236,17 +236,22 @@ void startconfig() {
                 buffer[i]='_';
                 isfinished=true;
             }
-            if (buffer[i]=='\0'){
-                if (isfinished != true) {
-                    buffer[i]=getchar();
-                    if (buffer[i]=='\n') 
-                        isfinished = true;
-                    j=i+1;
-                    } else j=i;
-                        for (;j<STR_RIGHT;j++){
-                            buffer[j]='_';
-                    }
-                goto inizializzato;
+            if (buffer[i] == '\r') 
+                                            buffer[i] = '_';
+                                        if (buffer[i]=='\0'){
+                                        if (isfinished != true) {
+                                            buffer[i]=getchar();
+                                            j=i+1;
+                                            if (buffer[i]=='\n') {
+                                                isfinished = true;
+                                                j= i;
+                                            } else if (buffer[i]=='\r')
+                                                j=i;
+                                        } else j=i;
+                                        for (;j<lunghezzabuffer;j++)
+                                            buffer[j]='_';
+                                        
+                                        goto inizializzato;
             }
         }
     }
@@ -614,7 +619,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     if (queue==0) {
         for (tmp=0;tmp<nfinal;tmp++)
             if (cnf->state==final[tmp]){
-                printf("1\n");
+                printf("1");
                 return true;
             }
         // Se sono qui, è da cancellare la config, non accettata!
@@ -650,7 +655,7 @@ void compute(){
                 goto reset1;
         }
         if (elements==0) {
-            printf("0\n");
+            printf("0");
             goto reset2;
         }
         elements=0;
@@ -659,7 +664,7 @@ void compute(){
         temp = config;
         i++;      
     }
-    printf("U\n");
+    printf("U");
     reset1: reset(newconfig);
     
     //Controllo se la stringa è finita
@@ -669,7 +674,7 @@ void compute(){
         free (srt);
         srt=0;
     }
-
+    printf("\n");
     fine: elements=0;
     isfinished=0;
     if (buffer!=0)
