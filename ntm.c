@@ -11,7 +11,7 @@
 #define STATES_S 10
 #define STATES_E 2
 #define HASH_MOD 33
-#define S_FINAL 10
+#define S_FINAL 20
 #define STR_IN 20
 #define STR_RIGHT 8
 #define STR_LEFT 8
@@ -31,7 +31,8 @@ int numberconf=0;
 bool isfinished=0;
 //Variabile per sapere se qualche computazione è stata terminata per aver superato max
 bool toomanycomputations=0;
-
+//Variabile per sapere se qualcosa non terminerà mai
+bool computing = 0;
 /* Struttura per transizioni
 - 256 puntatori ad array, 0
 - Ogni puntatore punta ad un array di puntatori di STATES_S elementi, espando se necessario di STATES_E
@@ -320,6 +321,10 @@ void inizializza(str1 *new, int lunghezza){
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
 void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
+    if ((int)arco->cwrite == letto && arco->movement == 'S' && stato->state==arco->states) {
+        computing = true;
+        goto notlast;
+    }
     int j;
     elements++;
     int cursor, ltmp, tmp;
@@ -437,7 +442,8 @@ void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
     }
     //Aggiungo in testa alla lista delle config la nuova config creata
     destinazione->next=newconfig;
-    newconfig=destinazione;    
+    newconfig=destinazione;  
+    notlast:;  
 }   
 void reset(conf *cnf) {
     // reset delle config
@@ -452,6 +458,11 @@ void reset(conf *cnf) {
 }
 
 void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
+    if ((int)arco->cwrite == letto && arco->movement == 'S' && stato->state==arco->states) {
+        computing = true;
+        freeconfig(stato);
+        goto last;
+    }
     elements++;
     str *new = 0;
     str1 *extrem = 0;
@@ -584,6 +595,7 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
         //Aggiungo in testa 
         stato->next=newconfig;
         newconfig=stato;
+        last:;
 }
 
 
