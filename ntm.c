@@ -10,11 +10,11 @@
 /* Costanti moltiplicative */
 #define STATES_S 10
 #define STATES_E 2
-#define HASH_MOD 33
-#define S_FINAL 20
+#define HASH_MOD 1
+#define S_FINAL 1
 #define STR_IN 20
-#define STR_RIGHT 8
-#define STR_LEFT 8
+#define STR_RIGHT 20
+#define STR_LEFT 20
 
 //libc libraries
 #include <stdio.h>
@@ -32,7 +32,7 @@ bool isfinished=0;
 //Variabile per sapere se qualche computazione è stata terminata per aver superato max
 bool toomanycomputations=0;
 //Variabile per sapere se qualcosa non terminerà mai
-bool computing = 0;
+bool computing = false;
 /* Struttura per transizioni
 - 256 puntatori ad array, 0
 - Ogni puntatore punta ad un array di puntatori di STATES_S elementi, espando se necessario di STATES_E
@@ -59,13 +59,13 @@ char *buffer = 0;
 //Chunk letto
 int lunghezzabuffer=0;
 
-long elements = 0;
+long int elements = 0;
 
 int hash(int state){
     return (state%HASH_MOD);
 }
 
-long max;
+long int max;
 
 /*Strutture per grafo di transizione:
 indice - lista di stringhe che si espande a destra, grandezza iniziale: STR_IN
@@ -261,7 +261,9 @@ void startconfig() {
     strncpy(config->snext->text, buffer, STR_RIGHT);
     //printf("Letto %s\n", control);
     config->current=0;
-    end: elements=0;
+    elements=0;
+    end:; 
+
 }
 
 //Libero una lista di transazioni (utile?)
@@ -631,7 +633,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     if (queue==0) {
         for (tmp=0;tmp<nfinal;tmp++)
             if (cnf->state==final[tmp]){
-                printf("1");
+                printf("1\n");
                 return true;
             }
         // Se sono qui, è da cancellare la config, non accettata!
@@ -655,7 +657,7 @@ void compute(){
     startconfig();
     if (hofinito==0)
         goto fine;
-    int i = 0;
+    long int i = 0;
     conf *temp=config;
     conf *prec = 0;
     while (i < max) {
@@ -666,8 +668,8 @@ void compute(){
             if (searchandqueueandcompute(prec,&prec))
                 goto reset1;
         }
-        if (elements==0) {
-            printf("0");
+        if (elements==0 && computing==false) {
+            printf("0\n");
             goto reset2;
         }
         elements=0;
@@ -676,25 +678,26 @@ void compute(){
         temp = config;
         i++;      
     }
-    printf("U");
+    printf("U\n");
     reset1: reset(newconfig);
     
     //Controllo se la stringa è finita
      reset2: if (isfinished==false) {
-        srt = malloc(sizeof(char)*200);
-        fgets(srt,200,stdin);
+        srt = malloc(sizeof(char)*200000);
+        hofinito = fgets(srt,200000,stdin);
         free (srt);
         srt=0;
     }
-    printf("\n");
-    fine: elements=0;
-    isfinished=0;
+    elements=0;
+    computing=false;
+    isfinished=false;
     if (buffer!=0)
         free(buffer);
     buffer = 0;
     lunghezzabuffer=0;
     config = 0;
     newconfig=0;
+    fine:;
 }
 
 
@@ -705,7 +708,7 @@ int main() {
     readmax();
     while (!feof(stdin) && hofinito!=0) {
         compute();
-    }
+}
     return 0;
 
 } 
