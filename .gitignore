@@ -39,3 +39,4 @@ IncreasingStuff/*
 slide/*
 .vscode/*
 Old/*
+*.out
