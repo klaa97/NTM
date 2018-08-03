@@ -40,3 +40,4 @@ slide/*
 .vscode/*
 Old/*
 *.out
+*.txt
