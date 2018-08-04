@@ -13,8 +13,8 @@
 #define HASH_MOD 256
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 32
-#define STR_LEFT 32
+#define STR_RIGHT 64
+#define STR_LEFT 64
 
 //libc libraries
 #include <stdio.h>
@@ -72,7 +72,7 @@ int hash(int state){
     return (state*(state+3))%HASH_MOD;
 }
 
-long int max;
+long long int max;
 
 /*Strutture per grafo di transizione:
 indice - lista di stringhe che si espande a destra, grandezza iniziale: STR_IN
@@ -83,15 +83,15 @@ typedef struct str{
 } str;
 typedef struct str1{
     char *text;
-    int shared;
-    int lunghezza;
+    long shared;
+    long lunghezza;
 } str1;
 typedef struct conf{
     str1 *sprev;
     str1 *snext;
     struct conf *next;
     int state;
-    int current; // Puntatore alla posizone, negativo: prev | >=STR_IN: next
+    long current; // Puntatore alla posizone, negativo: prev | >=STR_IN: next
 }conf;
 conf *config = 0; //Mantiene la testa della lista vecchia
 conf *newconfig = 0; //Mantiene testa lista nuova
@@ -179,7 +179,7 @@ void readfinal(){
 
 void readmax() {
     scanf("max");
-    scanf("%ld", &max);
+    scanf("%lli", &max);
     scanf(" ");
     scanf("run ");
 }
@@ -189,8 +189,10 @@ void startconfig() {
     //elements = 1;
     buffer = malloc(sizeof(char)*STR_RIGHT);
     hofinito = fgets(buffer, STR_RIGHT, stdin);
-    if (hofinito==0)
+    if (hofinito==0) {
+        hofinito = 0;
         goto end;
+    }
     int i=0;
     int j;
     config = malloc(sizeof(conf));
@@ -650,11 +652,10 @@ void compute(){
     startconfig();
     if (hofinito==0)
         goto fine;
-    long int i = 0;
+    long long int i = 0;
     conf *temp=config;
     conf *prec = 0;
     while (i < max) {
-        //("sono alla %d comp", i);
         while (temp!=0) {
             prec = temp;
             temp = temp->next;
@@ -672,8 +673,6 @@ void compute(){
         temp = config;
         i++;      
     }
-    //Controllo non sia 1
-
     nonfiniromai: printf("U\n");
     reset1: reset(newconfig);
     
@@ -697,7 +696,7 @@ void compute(){
 }
 
 void checkfinals() {
-    int i,j, k;
+    long int i,j, k;
     dotrs *dotrstemp;
     trs *trstemp;
     for (i=0;i<127;i++) {
@@ -730,6 +729,6 @@ int main() {
     while (!feof(stdin) && hofinito!=0) {
         compute();
 }
-    return 0;
+
 
 } 
