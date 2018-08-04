@@ -10,7 +10,7 @@
 /* Costanti moltiplicative */
 #define STATES_S 10
 #define STATES_E 2
-#define HASH_MOD 2000
+#define HASH_MOD 256
 #define S_FINAL 30
 #define STR_IN 20
 #define STR_RIGHT 32
@@ -33,16 +33,24 @@ bool computing = false;
 /* Struttura per transizioni
 - 256 puntatori ad array, 0
 - Ogni puntatore punta ad un array di puntatori di STATES_S elementi, espando se necessario di STATES_E
-- Ogni puntatore di STATES_S elementi punta a una struct con cosa scrivere, R/S/L, stato  
-- Tabella hash, 256, funzione hash: modulo
+- Ogni puntatore di STATES_S elementi punta a una struct con lo stato di partenza, che a sua volta punta a cosa scrivere, R/S/L, stato  
+- Tabella hash, 256, funzione hash: KNUTH modulo
 */
-typedef struct trs{
-    struct trs *next;
-    int startstate;
+
+typedef struct dotrs{
+    struct dotrs *next;
     char cwrite;
     char movement; 
     int states;
+}dotrs;
+
+
+typedef struct trs{
+    struct trs *next;
+    int startstate;
+    dotrs *archi;
 } trs;
+
 
 #include <string.h>
 trs **ingresso[127];
@@ -59,8 +67,9 @@ int lunghezzabuffer=0;
 
 long int elements = 0;
 
+//Knuth method
 int hash(int state){
-    return (state%HASH_MOD);
+    return (state*(state+3))%HASH_MOD;
 }
 
 long int max;
@@ -106,15 +115,26 @@ void memstr1(str1 *dest, str1 *prev) {
 }
 
 void insert(int start, int h, char csub, char tr, int sd, int sstart){
-    trs *el;
-    el = malloc(sizeof(trs));
-    el->startstate = sstart;
+    trs *temp = ingresso[start][h];
+    while (temp != 0){
+        if (sstart == temp->startstate)
+            goto found;
+        temp = temp->next;
+    }
+    // Se non ho trovato, creo trs
+    temp = malloc(sizeof(trs));
+    temp->startstate = sstart;
+    temp->next=ingresso[start][h];
+    ingresso[start][h]=temp;
+    found:;
+    dotrs *el;
+    el = malloc(sizeof(dotrs));
     el->cwrite=csub;
     el->movement=tr;
-    el->states =  sd;
-    el->next=ingresso[start][h];
-    ingresso[start][h]=el;
-    //printf("da scrivere %c\n movimento %c\n stato %d\n",el->cwrite, el->movement, el->states);
+    el->states = sd;
+    el->next = temp->archi;
+    temp->archi = el; 
+   //printf("da scrivere %c\n movimento %c\n stato %d\n",el->cwrite, el->movement, el->states);
 }
 
 void readtransaction(){
@@ -248,7 +268,7 @@ void freeconfig(conf *cnf) {
     free(cnf);
 }
 
-trs *addtoqueue(trs *queue, char cwr, char mov, int st){
+/*trs *addtoqueue(trs *queue, char cwr, char mov, int st){
     trs *el;
     el = malloc(sizeof(trs));
     el->startstate=0;
@@ -258,7 +278,7 @@ trs *addtoqueue(trs *queue, char cwr, char mov, int st){
     el->next = queue;
     queue = el;
     return el;
-}
+}*/
 
 //Pop di una transizione una volta eseguita
 trs *deletefirstinqueue(trs *queue){
@@ -277,7 +297,7 @@ void inizializza(str1 *new, int lunghezza){
 }
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
-void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
+void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
     int j;
     elements++;
     int cursor, ltmp, tmp, nchunk = 0;
@@ -414,7 +434,7 @@ void reset(conf *cnf) {
     cnf = 0;
 }
 
-void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
+void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
     elements++;
     str *new = 0;
     str1 *extrem = 0;
@@ -557,12 +577,14 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
 bool searchandqueueandcompute(conf *cnf, conf **valore){
     // Aggiungo alla Queue le transizioni possibili per la transizione
     str1 *extrem=0;
+    bool pozzo = true;
     int tmp;
     char control;
     trs *queue=0;
     int h = hash(cnf->state);
     int i = cnf->current;
     bool where;
+    dotrs *dafare;
     if (i >= 0){
         where = 1;
         extrem=cnf->snext;
@@ -575,16 +597,25 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     int letto = (int) control;
     //("è la %d conf che computo, e ho letto %c\n", numberconf, letto);
     trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
-    while (list!=0){
+    while (list!=0) {
         if (list->startstate==cnf->state){
-            if (list->states == cnf->state && list->movement == 'S' && letto == list->cwrite)
-                computing = true;
-            else queue = addtoqueue(queue, list->cwrite, list->movement, list->states);
+            pozzo = false;
+            dafare = list->archi;
+            while (dafare!=0){
+                if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
+                    computing = true;
+                else if (dafare->next!=0)
+                    computeconfignotlast(dafare, cnf, letto, i, where);
+                else computeconfiglast(dafare, cnf, letto, i, where);
+                dafare = dafare->next;
+            }
+            goto computata;
         }
         list=list->next;
     }
+    computata:;
     //Se non ci sono possibili transizioni, o è accettazione o è pozzo (non accettata)
-    if (queue==0) {
+    if (pozzo == true) {
         for (tmp=0;tmp<nfinal;tmp++)
             if (cnf->state==final[tmp]){
                 printf("1\n");
@@ -593,15 +624,17 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
         // Se sono qui, è da cancellare la config, non accettata!
         freeconfig(cnf);
     }
+    
+    
     //Per ogni config presente nella lista, computo; l'ultima ha una computazione speciale (non libero)
-    trs *now = 0;
+    /*trs *now = 0;
     while (queue!=0) {
         now = queue;
         if (now->next!=0)
             computeconfignotlast(now, cnf, letto, i, where);
         else computeconfiglast(now, cnf, letto, i, where);
         queue = deletefirstinqueue(queue);
-    }
+    }*/
     return false;
 }
 /*Starto la configurazione, computo max-mosse
