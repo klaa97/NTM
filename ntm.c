@@ -126,6 +126,7 @@ void insert(int start, int h, char csub, char tr, int sd, int sstart){
     temp->startstate = sstart;
     temp->next=ingresso[start][h];
     ingresso[start][h]=temp;
+    temp->archi = 0;
     found:;
     dotrs *el;
     el = malloc(sizeof(dotrs));
@@ -599,11 +600,15 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
     while (list!=0) {
         if (list->startstate==cnf->state){
-            pozzo = false;
             dafare = list->archi;
+            pozzo = false;
             while (dafare!=0){
                 if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
                     computing = true;
+                else if (dafare->states == -1) {
+                    printf("1\n");
+                    return true;
+                }
                 else if (dafare->next!=0)
                     computeconfignotlast(dafare, cnf, letto, i, where);
                 else computeconfiglast(dafare, cnf, letto, i, where);
@@ -616,11 +621,11 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     computata:;
     //Se non ci sono possibili transizioni, o è accettazione o è pozzo (non accettata)
     if (pozzo == true) {
-        for (tmp=0;tmp<nfinal;tmp++)
+        /*for (tmp=0;tmp<nfinal;tmp++)
             if (cnf->state==final[tmp]){
                 printf("1\n");
                 return true;
-            }
+            }*/
         // Se sono qui, è da cancellare la config, non accettata!
         freeconfig(cnf);
     }
@@ -641,6 +646,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
 - se la config è null prima, termina 0 | se non è null dopo, è U */
 void compute(){
     char *srt;
+    int tmp;
     startconfig();
     if (hofinito==0)
         goto fine;
@@ -652,20 +658,23 @@ void compute(){
         while (temp!=0) {
             prec = temp;
             temp = temp->next;
-            if (searchandqueueandcompute(prec,&prec))
+            if (searchandqueueandcompute(prec,&prec)) 
                 goto reset1;
         }
         if (elements==0 && computing==false) {
             printf("0\n");
             goto reset2;
-        }
+        } else if (elements == 0 && computing ==true) 
+            goto nonfiniromai;
         elements=0;
         config = newconfig;
         newconfig = 0;
         temp = config;
         i++;      
     }
-    printf("U\n");
+    //Controllo non sia 1
+
+    nonfiniromai: printf("U\n");
     reset1: reset(newconfig);
     
     //Controllo se la stringa è finita
@@ -687,12 +696,37 @@ void compute(){
     fine:;
 }
 
+void checkfinals() {
+    int i,j, k;
+    dotrs *dotrstemp;
+    trs *trstemp;
+    for (i=0;i<127;i++) {
+        if (ingresso[i]!=0) {
+            for (j=0;j<HASH_MOD;j++) {
+                trstemp = ingresso[i][j];
+                while (trstemp != 0) {
+                    dotrstemp = trstemp->archi;
+                    while (dotrstemp!=0) {
+                        for (k=0;k<nfinal;k++)
+                            if (dotrstemp->states==final[k]){
+                                dotrstemp->states = -1;
+                            }
+                        dotrstemp=dotrstemp->next;
+                    }
+                    trstemp=trstemp->next;
+                }
+            }   
+        }
+    }
+}
+
 
 int main() {
     //int *final;
     readtransaction();
     readfinal();
     readmax();
+    checkfinals();
     while (!feof(stdin) && hofinito!=0) {
         compute();
 }
