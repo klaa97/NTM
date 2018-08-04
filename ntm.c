@@ -10,11 +10,11 @@
 /* Costanti moltiplicative */
 #define STATES_S 10
 #define STATES_E 2
-#define HASH_MOD 1
-#define S_FINAL 1
+#define HASH_MOD 2000
+#define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 20
-#define STR_LEFT 20
+#define STR_RIGHT 32
+#define STR_LEFT 32
 
 //libc libraries
 #include <stdio.h>
@@ -26,11 +26,8 @@
 char prova = 'a';
 char *hofinito = &prova;
 
-int numberconf=0;
 //Variabile per sapere se ho già letto fino alla fine della stringa
 bool isfinished=0;
-//Variabile per sapere se qualche computazione è stata terminata per aver superato max
-bool toomanycomputations=0;
 //Variabile per sapere se qualcosa non terminerà mai
 bool computing = false;
 /* Struttura per transizioni
@@ -47,6 +44,7 @@ typedef struct trs{
     int states;
 } trs;
 
+#include <string.h>
 trs **ingresso[127];
 
 //Stati finali
@@ -88,7 +86,6 @@ typedef struct conf{
 }conf;
 conf *config = 0; //Mantiene la testa della lista vecchia
 conf *newconfig = 0; //Mantiene testa lista nuova
-str1 *defaultnext; //Stringa dove mettere i next non modificati
 
 void memconf(conf *dest, conf* prev) {
     dest->current=prev->current;
@@ -119,47 +116,6 @@ void insert(int start, int h, char csub, char tr, int sd, int sstart){
     ingresso[start][h]=el;
     //printf("da scrivere %c\n movimento %c\n stato %d\n",el->cwrite, el->movement, el->states);
 }
-
-
-
-// Passo la posizione del cursore aumentata e char* da dove posso riempire per STR_EXP
-/*void riempioadestra(char *dariempire, int cursor) {
-    int i;
-    // Non ho già letto il pezzo
-    if (cursor > lunghezzabuffer) {
-        if (isfinished == 1) {
-            for (i=0;i<STR_EXP;i++)
-                dariempire[i]="_";
-        } else {
-            if (buffer == 0)
-                buffer= malloc(sizeof(char)*STR_EXP);
-            else realloc(buffer,sizeof(char)*(lunghezzabuffer+STR_EXP));
-            fgets(buffer+lunghezzabuffer, STR_EXP,stdin);
-            for (i = lunghezzabuffer; i < lunghezzabuffer + STR_EXP; i++){
-                        if (buffer[i] == "\0" && i == lunghezzabuffer + STR_EXP -1)
-                            buffer[i] = getchar();
-                        if (buffer[i]=='\r' || buffer[i]=='\n' || buffer[i]=='\0'){
-                            if (buffer[i]=='\n')
-                                isfinished=true;
-                            if (buffer[i]=='\0') {
-                               for (;i<STR_IN;i++){
-                                    buffer[i]='_';
-                                   }
-                                 goto finish;
-                            }
-                        }
-            }
-            for (i=0;i<STR_EXP;i++)
-                dariempire[i]=buffer[cursor+i-1];
-        }
-        finish: lunghezzabuffer += STR_EXP;
-    }
-    else {
-        for (i=0;i<STR_EXP;i++)
-            dariempire[i]=buffer[cursor+i-1];
-        }       
-}*/        
-
 
 void readtransaction(){
     int i;
@@ -251,7 +207,6 @@ void startconfig() {
                                         } else j=i;
                                         for (;j<lunghezzabuffer;j++)
                                             buffer[j]='_';
-                                        
                                         goto inizializzato;
             }
         }
@@ -323,29 +278,26 @@ void inizializza(str1 *new, int lunghezza){
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
 void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
-    if ((int)arco->cwrite == letto && arco->movement == 'S' && stato->state==arco->states) {
-        computing = true;
-        goto notlast;
-    }
     int j;
     elements++;
-    int cursor, ltmp, tmp;
+    int cursor, ltmp, tmp, nchunk = 0;
     str1 *extrem = 0;
     char *control;
     //Creo una nuova config identica alla precedente
     conf *destinazione = malloc(sizeof(conf));
     memconf(destinazione,stato);
     //memmove(destinazione,stato,sizeof(conf));
-    destinazione->next = 0;
     //funzione per fare un branch e creare una nuova stringa se necessario
     if ((int)arco->cwrite != letto) {
        switch (where) {
             case 1: {
                 extrem=malloc(sizeof(str1));
                 memstr1(extrem, stato->snext);
+                nchunk = (destinazione->current / STR_RIGHT +1)*STR_RIGHT;
+                extrem->lunghezza = nchunk;
                 //memmove(extrem,stato->snext,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*extrem->lunghezza);
-                strncpy(extrem->text,stato->snext->text, extrem->lunghezza);
+                extrem->text=malloc(sizeof(char)*nchunk);
+                strncpy(extrem->text,stato->snext->text, nchunk);
                 extrem->text[i]=arco->cwrite;
                 extrem->shared=1;
                 destinazione->snext=extrem;
@@ -355,9 +307,11 @@ void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
             case 0: {
                 extrem=malloc(sizeof(str1));
                 memstr1(extrem,stato->sprev);
+                nchunk = ((-destinazione->current -1 )/ STR_LEFT +1)*STR_LEFT;
+                extrem->lunghezza = nchunk;
                 //memmove(extrem,stato->sprev,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*extrem->lunghezza);
-                strncpy(extrem->text,stato->sprev->text, extrem->lunghezza);
+                extrem->text=malloc(sizeof(char)*nchunk);
+                strncpy(extrem->text,stato->sprev->text, nchunk);
                 extrem->text[-i-1]=arco->cwrite;
                 extrem->shared=1;
                 destinazione->sprev=extrem;
@@ -435,8 +389,10 @@ void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
                         strncpy(destinazione->snext->text+tmp,buffer+tmp,STR_RIGHT);
                     }
                 } else {
-                    strncpy(destinazione->snext->text+ltmp,buffer+ltmp,STR_RIGHT);
                     destinazione->snext->lunghezza += STR_RIGHT;
+                    destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
+                    strncpy(destinazione->snext->text+ltmp,buffer+ltmp,STR_RIGHT);
+                    
                 }
             }
             break;   
@@ -445,7 +401,6 @@ void computeconfignotlast(trs *arco, conf *stato, int letto, int i, int where){
     //Aggiungo in testa alla lista delle config la nuova config creata
     destinazione->next=newconfig;
     newconfig=destinazione;  
-    notlast:;  
 }   
 void reset(conf *cnf) {
     // reset delle config
@@ -460,15 +415,10 @@ void reset(conf *cnf) {
 }
 
 void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
-    if ((int)arco->cwrite == letto && arco->movement == 'S' && stato->state==arco->states) {
-        computing = true;
-        freeconfig(stato);
-        goto last;
-    }
     elements++;
     str *new = 0;
     str1 *extrem = 0;
-    int cursor, ltmp,j,tmp;
+    int cursor, ltmp,j,tmp,nchunk;
     char *control;
     //Modifico il carattere da modificare, se necessario;
     //Se shared=1, non è necessario fare un branch ma basta modificare
@@ -480,10 +430,12 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
                 } else {
                     stato->snext->shared--;
                     extrem=malloc(sizeof(str1));
+                    nchunk = (stato->current / STR_RIGHT +1)*STR_RIGHT;
                     memstr1(extrem,stato->snext);
+                    extrem->lunghezza = nchunk;
                     //memmove(extrem,stato->snext,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*extrem->lunghezza);
-                    strncpy(extrem->text,stato->snext->text, extrem->lunghezza);
+                    extrem->text=malloc(sizeof(char)*nchunk);
+                    strncpy(extrem->text,stato->snext->text, nchunk);
                     extrem->text[i]=arco->cwrite;
                     extrem->shared=1;
                     stato->snext=extrem;
@@ -499,10 +451,12 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
                 } else {
                     stato->sprev->shared--;
                     extrem=malloc(sizeof(str1));
+                    nchunk = ((-stato->current -1 )/ STR_LEFT +1)*STR_LEFT;
                     memstr1(extrem, stato->sprev);
+                    extrem->lunghezza = nchunk;
                     //memmove(extrem,stato->sprev,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*extrem->lunghezza);
-                    strncpy(extrem->text,stato->sprev->text, extrem->lunghezza);
+                    extrem->text=malloc(sizeof(char)*nchunk);
+                    strncpy(extrem->text,stato->sprev->text,nchunk);
                     extrem->text[-i-1]=arco->cwrite;
                     extrem->shared=1;
                     stato->sprev=extrem;
@@ -568,7 +522,7 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
                                             if (buffer[ltmp]=='\n') {
                                                 isfinished = true;
                                                 j= ltmp;
-                                            } else if (buffer[ltmp]=='\n')
+                                            } else if (buffer[ltmp]=='\r')
                                                 j=ltmp;
                                         }
                                             
@@ -597,7 +551,6 @@ void computeconfiglast(trs *arco, conf *stato, int letto, int i, int where) {
         //Aggiungo in testa 
         stato->next=newconfig;
         newconfig=stato;
-        last:;
 }
 
 
@@ -624,8 +577,9 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
     while (list!=0){
         if (list->startstate==cnf->state){
-            //("per la %d conf scriverò %c\n", numberconf, list->cwrite);
-            queue = addtoqueue(queue, list->cwrite, list->movement, list->states);
+            if (list->states == cnf->state && list->movement == 'S' && letto == list->cwrite)
+                computing = true;
+            else queue = addtoqueue(queue, list->cwrite, list->movement, list->states);
         }
         list=list->next;
     }
