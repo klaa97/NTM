@@ -96,6 +96,56 @@ typedef struct conf{
 conf *config = 0; //Mantiene la testa della lista vecchia
 conf *newconfig = 0; //Mantiene testa lista nuova
 
+//Copio conf da prev a dest
+void memconf(conf* dest, conf* prev);
+
+//Copio str da prev a dest
+void memstr(str *dest, str *prev);
+
+//Inserisco nella hash table una nuova transizione
+void insert(int start, int h, char csub, char tr, int sd, int sstart);
+
+//Leggo le transizioni per inserirle
+void readtransaction();
+
+//Leggo gli stati finali
+void readfinal();
+
+//Leggo il valore massimo (LONG)
+void readmax();
+
+//Inizializzo la prima configurazione
+void startconfig();
+
+//Computo una not-last transizione
+void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where);
+
+//Faccio il reset di tutte le conf a partire da cnf
+void reset(conf *cnf);
+
+//Computo una last transizione
+void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where);
+
+//Cerco le transizioni e computo
+bool searchandqueueandcompute(conf *cnf, conf **valore);
+
+//Computo - loop principale
+void compute();
+
+//Rimappo gli stati finali a -1
+void checkfinals();
+
+int main() {
+    //int *final;
+    readtransaction();
+    readfinal();
+    readmax();
+    checkfinals();
+    while (!feof(stdin) && hofinito!=0) {
+        compute();
+    }
+} 
+
 void memconf(conf *dest, conf* prev) {
     dest->current=prev->current;
     dest->snext=prev->snext;
@@ -244,16 +294,6 @@ void startconfig() {
 
 }
 
-//Libero una lista di transazioni (utile?)
-void freetrs(trs *list) {
-    trs *prev = 0;
-    while (list!=0){
-        prev=list;
-        free(prev);
-        prev=0;
-        list=list->next;
-    }
-}
 
 void freeconfig(conf *cnf) {
     //Riduco di 1 il contatore shared di tutte le stringhe in conf, libero le stringhe se è zero
@@ -271,33 +311,6 @@ void freeconfig(conf *cnf) {
     free(cnf);
 }
 
-/*trs *addtoqueue(trs *queue, char cwr, char mov, int st){
-    trs *el;
-    el = malloc(sizeof(trs));
-    el->startstate=0;
-    el->cwrite=cwr;
-    el->movement=mov;
-    el->states =  st;
-    el->next = queue;
-    queue = el;
-    return el;
-}*/
-
-//Pop di una transizione una volta eseguita
-trs *deletefirstinqueue(trs *queue){
-    trs *el = queue->next;
-    free (queue);
-    return el;
-}
-
-//Inizializza una stringa nuova creata con BLANK // DA RIFARE!
-void inizializza(str1 *new, int lunghezza){
-    int i;
-    char *s = new->text;
-    for (i=0; i<lunghezza; i++)
-        s[i]='_';
-    new->shared=1;
-}
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
@@ -434,7 +447,6 @@ void reset(conf *cnf) {
         freeconfig(cnf);
         elements--;
     }
-    cnf = 0;
 }
 
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
@@ -720,15 +732,3 @@ void checkfinals() {
 }
 
 
-int main() {
-    //int *final;
-    readtransaction();
-    readfinal();
-    readmax();
-    checkfinals();
-    while (!feof(stdin) && hofinito!=0) {
-        compute();
-}
-
-
-} 
