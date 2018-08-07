@@ -15,6 +15,7 @@
 #define STR_IN 20
 #define STR_RIGHT 64
 #define STR_LEFT 64
+#define STR_EXP 2
 
 //libc libraries
 #include <stdio.h>
@@ -39,8 +40,8 @@ bool computing = false;
 
 typedef struct dotrs{
     struct dotrs *next;
-    char cwrite;
-    char movement; 
+    int cwrite;
+    int movement; 
     int states;
 }dotrs;
 
@@ -59,13 +60,11 @@ trs **ingresso[127];
 int* final;
 int nfinal;
 
-
 //Puntatore a buffer di ingresso
-char *buffer = 0;
+char *buffer;
 //Chunk letto
 int lunghezzabuffer=0;
 
-long int elements = 0;
 
 //Knuth method
 int hash(int state){
@@ -81,20 +80,30 @@ typedef struct str{
     char *text;
     int shared;
 } str;
+
 typedef struct str1{
     char *text;
-    long shared;
+    int shared;
     long lunghezza;
 } str1;
+
 typedef struct conf{
-    str1 *sprev;
-    str1 *snext;
+    str **sprev;
+    short unsigned int lungsprev;
+    str **snext;
+    short unsigned int lungsnext;
     struct conf *next;
     int state;
-    long current; // Puntatore alla posizone, negativo: prev | >=STR_IN: next
+    long current; // Puntatore alla posizone, negativo: prev | positivo: next
 }conf;
+
 conf *config = 0; //Mantiene la testa della lista vecchia
 conf *newconfig = 0; //Mantiene testa lista nuova
+conf *todelete = 0;
+
+int elements = 0; // Nuovi
+int elementstodelete = 0; // Inutili
+int oldelements = 1; //Vecchi
 
 //Copio conf da prev a dest
 void memconf(conf* dest, conf* prev);
@@ -103,7 +112,7 @@ void memconf(conf* dest, conf* prev);
 void memstr(str *dest, str *prev);
 
 //Inserisco nella hash table una nuova transizione
-void insert(int start, int h, char csub, char tr, int sd, int sstart);
+void insert(int start, int h, int csub, char tr, int sd, int sstart);
 
 //Leggo le transizioni per inserirle
 void readtransaction();
@@ -121,7 +130,7 @@ void startconfig();
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where);
 
 //Faccio il reset di tutte le conf a partire da cnf
-void reset(conf *cnf);
+void reset(conf *cnf, int elements);
 
 //Computo una last transizione
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where);
@@ -147,11 +156,42 @@ int main() {
 } 
 
 void memconf(conf *dest, conf* prev) {
+    int i, bigger;
+    str **npointer;
+    str **ppointer;
     dest->current=prev->current;
-    dest->snext=prev->snext;
-    dest->sprev=prev->sprev;
-    dest->next=prev->next;
+    dest->snext=malloc(sizeof(str)*prev->lungsnext);
+    dest->sprev=malloc(sizeof(str)*prev->lungsprev);
+    memcpy(dest->snext, prev->snext, prev->lungsnext*sizeof(str));
+    memcpy(dest->sprev, prev->sprev, prev->lungsprev*sizeof(str));
+    dest->lungsnext = prev->lungsnext;
+    dest->lungsprev = prev->lungsprev;
     dest->state=prev->state;
+    npointer = dest->snext;
+    ppointer = dest->sprev;
+    bigger = (prev->lungsnext >= prev->lungsprev) ? 1 : 0;
+    switch (bigger) {
+                    case 1: {
+                        for (i=0;i<prev->lungsprev;i++){
+                            npointer[i]->shared++;
+                            ppointer[i]->shared++;
+                        }
+                        for (; i < prev->lungsnext; i++){
+                            npointer[i]->shared++;
+                        }
+                        break;
+                    }
+                    case 0: {
+                        for (i=0;i<prev->lungsnext;i++){
+                            npointer[i]->shared++;
+                            ppointer[i]->shared++;
+                        }
+                        for (; i < prev->lungsprev; i++){
+                            ppointer[i]->shared++;
+                        }
+                        break;
+                    }
+                }
 }
 
 void memstr(str *dest, str *prev) {
@@ -164,7 +204,7 @@ void memstr1(str1 *dest, str1 *prev) {
     dest->text=prev->text;
 }
 
-void insert(int start, int h, char csub, char tr, int sd, int sstart){
+void insert(int start, int h, int csub, char tr, int sd, int sstart){
     trs *temp = ingresso[start][h];
     while (temp != 0){
         if (sstart == temp->startstate)
@@ -206,7 +246,7 @@ void readtransaction(){
             ingresso[(int)cstart]=calloc(HASH_MOD, sizeof(trs));
         }
         h=hash(sstart);
-        insert((int)cstart,h,csubstitute,transaction,send, sstart);
+        insert(cstart,h,csubstitute,transaction,send, sstart);
     }
 }
 
@@ -236,78 +276,91 @@ void readmax() {
 
 //Inizializzo la prima configurazione
 void startconfig() {
-    //elements = 1;
-    buffer = malloc(sizeof(char)*STR_RIGHT);
-    hofinito = fgets(buffer, STR_RIGHT, stdin);
-    if (hofinito==0) {
-        hofinito = 0;
-        goto end;
-    }
-    int i=0;
-    int j;
+    str **p;
+    str *testo;
+    int i = 0;
+    //Leggo tutta la stringa in ingresso con %ms
+    scanf("%ms ", &buffer);
+    lunghezzabuffer = strlen(buffer);
     config = malloc(sizeof(conf));
     config->next=0;
-    config->snext=malloc(sizeof(str1));
-    config->snext->shared = 1;
-    config->snext->text=malloc(sizeof(char)*STR_RIGHT);
-    config->snext->lunghezza=STR_RIGHT;
-    config->sprev=malloc(sizeof(str1));
-    config->sprev->text=malloc(sizeof(char)*STR_LEFT);
-    config->sprev->shared=1;
-    config->sprev->lunghezza=STR_LEFT;
-    char *control = config->sprev->text;
-    for (i=0;i<STR_LEFT;i++)
-        control[i]='_';
-    lunghezzabuffer = STR_RIGHT;
-    // Controllo se stringa finisce
-    for (i=0; i < STR_RIGHT; i++){
-        if (buffer[i]=='\r' || buffer[i]=='\n' || buffer[i]=='\0'){
-            if (buffer[i]=='\n') {
-                buffer[i]='_';
-                isfinished=true;
-            }
-            if (buffer[i] == '\r') 
-                                            buffer[i] = '_';
-                                        if (buffer[i]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[i]=getchar();
-                                            j=i+1;
-                                            if (buffer[i]=='\n') {
-                                                isfinished = true;
-                                                j= i;
-                                            } else if (buffer[i]=='\r')
-                                                j=i;
-                                        } else j=i;
-                                        for (;j<lunghezzabuffer;j++)
-                                            buffer[j]='_';
-                                        goto inizializzato;
-            }
-        }
-    }
-    inizializzato: config->state=0;
-    config->snext->text = malloc(sizeof(char)*lunghezzabuffer);
-    strncpy(config->snext->text, buffer, STR_RIGHT);
-    //printf("Letto %s\n", control);
+    config->state=0;
     config->current=0;
-    elements=0;
-    end:; 
+    p = config->snext;
+    p=malloc(sizeof(*p));
+    config->lungsnext = 1;
+    testo = *p;
+    testo = malloc(sizeof(*testo));
+    testo->shared = 1;
+    testo->text = malloc(sizeof(char)*STR_EXP);
+    if (lunghezzabuffer>=STR_EXP) {
+        strncpy(testo->text,buffer,STR_EXP);
+        //strncpy(testo->text,buffer,STR_EXP);
+    } else {
+        strncpy(testo->text,buffer,lunghezzabuffer);
+        for (i=lunghezzabuffer;i<STR_EXP;i++)
+            testo->text[i]='_';
+    }
+    config->snext = malloc(sizeof(str));
+    config->snext[0] = testo;
+    p = config->sprev;
+    p=malloc(sizeof(*p));
+    config->lungsprev = 1;
+    testo = *p;
+    testo = malloc(sizeof(*testo));
+    testo->shared = 1;
+    testo->text = malloc(sizeof(char)*STR_EXP);
+    for (i=0;i<STR_EXP;i++)
+        testo->text[i]='_';
+    config->sprev = malloc(sizeof(str));
+    config->sprev[0] = testo;
 
 }
 
 
 void freeconfig(conf *cnf) {
     //Riduco di 1 il contatore shared di tutte le stringhe in conf, libero le stringhe se è zero
-    cnf->sprev->shared--;
-    cnf->snext->shared--;
-    if (cnf->sprev->shared==0) {
-        free(cnf->sprev->text);
-        free(cnf->sprev);
-        
-    }
-    if (cnf->snext->shared==0) {
-        free(cnf->snext->text);
-        free(cnf->snext);
-    }
+    int i,bigger;
+    str **npointer=cnf->snext;
+    str **ppointer=cnf->sprev;
+    bigger = (cnf->lungsnext >= cnf->lungsprev) ? 1 : 0;
+
+    switch (bigger) {
+                    case 1: {
+                        for (i=0;i<cnf->lungsprev;i++){
+                            npointer[i]->shared--;
+                            ppointer[i]->shared--;
+                            if (npointer[i]==0)
+                                free(npointer);
+                            if (ppointer[i]==0)
+                                free(ppointer);
+                        }
+                        for (; i < cnf->lungsnext; i++){
+                            npointer[i]->shared--;
+                            if (npointer[i]==0)
+                                free(npointer);
+                        }
+                        break;
+                    }
+                    case 0: {
+                        for (i=0;i<cnf->lungsnext;i++){
+                            npointer[i]->shared--;
+                            ppointer[i]->shared--;
+                            if (npointer[i]==0)
+                                free(npointer);
+                            if (ppointer[i]==0)
+                                free(ppointer);
+                        }
+                        for (; i < cnf->lungsprev; i++){
+                            ppointer[i]->shared--;
+                            if (ppointer[i]==0)
+                                free(ppointer);
+                        }
+                        break;
+                    }
+                }
+    free(cnf->sprev);
+    free(cnf->snext);
     free(cnf);
 }
 
@@ -316,9 +369,12 @@ void freeconfig(conf *cnf) {
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
     int j;
     elements++;
-    int cursor, ltmp, tmp, nchunk = 0;
-    str1 *extrem = 0;
     char *control;
+    int cursor, ltmp, tmp, nchunk, block, relativepos, bigger,startpoint;
+    str *current = 0;
+    str *new = 0;
+    str **npointer;
+    str **ppointer;
     //Creo una nuova config identica alla precedente
     conf *destinazione = malloc(sizeof(conf));
     memconf(destinazione,stato);
@@ -327,39 +383,35 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
     if ((int)arco->cwrite != letto) {
        switch (where) {
             case 1: {
-                extrem=malloc(sizeof(str1));
-                memstr1(extrem, stato->snext);
-                nchunk = (destinazione->current / STR_RIGHT +1)*STR_RIGHT;
-                extrem->lunghezza = destinazione->snext->lunghezza;
-                //memmove(extrem,stato->snext,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*destinazione->snext->lunghezza);
-                strncpy(extrem->text,stato->snext->text, destinazione->snext->lunghezza);
-                extrem->text[i]=arco->cwrite;
-                extrem->shared=1;
-                destinazione->snext=extrem;
-                destinazione->sprev->shared++;             
+                block = i/STR_EXP;
+                relativepos = i%STR_EXP;
+                current = stato->snext[block];
+                new=malloc(sizeof(str));
+                memstr(new, current);
+                new->text=malloc(sizeof(char)*STR_EXP);
+                strncpy(new->text,current->text, STR_EXP);
+                new->text[relativepos]=arco->cwrite;
+                new->shared=1;
+                destinazione->snext[block]=new;
                 break;
             }
             case 0: {
-                extrem=malloc(sizeof(str1));
-                memstr1(extrem,stato->sprev);
-                nchunk = ((-destinazione->current -1 )/ STR_LEFT +1)*STR_LEFT;
-                extrem->lunghezza = destinazione->sprev->lunghezza;
-                //memmove(extrem,stato->sprev,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*destinazione->sprev->lunghezza);
-                strncpy(extrem->text,stato->sprev->text, destinazione->sprev->lunghezza);
-                extrem->text[-i-1]=arco->cwrite;
-                extrem->shared=1;
-                destinazione->sprev=extrem;
-                destinazione->snext->shared++;
+                block = (-i-1)/STR_EXP;
+                relativepos = (-1-i)%STR_EXP;
+                current = stato->sprev[block];
+                new=malloc(sizeof(str));
+                memstr(new, current);
+                new->text=malloc(sizeof(char)*STR_EXP);
+                strncpy(new->text,current->text, STR_EXP);
+                new->text[relativepos]=arco->cwrite;
+                new->shared=1;
+                destinazione->sprev[block]=new;
                 break;
-            }
-        }
+                }
+            break;
+        }           
     }
-    else {
-            destinazione->snext->shared++;
-            destinazione->sprev->shared++;
-    }
+    
     //Cambio stato
     destinazione->state=arco->states;
     //Cambio posizione
@@ -367,13 +419,17 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
         case 'L': {
             destinazione->current--;
             cursor = destinazione->current;
-            ltmp = destinazione->sprev->lunghezza;
+            ltmp = STR_EXP * destinazione->lungsprev;
             if (where == 0 && cursor < -ltmp) {
-                destinazione->sprev->lunghezza += STR_LEFT;
-                destinazione->sprev->text = realloc(destinazione->sprev->text, sizeof(char)*destinazione->sprev->lunghezza);
-                control = destinazione->sprev->text;
-                for (; ltmp < destinazione->sprev->lunghezza; ltmp++) {
-                    control[ltmp]='_';
+                destinazione->lungsprev += 1;
+                block = destinazione->lungsprev;
+                destinazione->sprev = realloc(destinazione->sprev, sizeof(str)*block);
+                destinazione->sprev[block-1] = malloc(sizeof(str));
+                destinazione->sprev[block-1]->shared = 1;
+                destinazione->sprev[block-1]->text = malloc(STR_EXP);
+                control = destinazione->sprev[block-1]->text;
+                for (i = 0; i < STR_EXP; i++) {
+                    control[i]='_';
                 }
             }                    
             break;
@@ -381,99 +437,79 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
         case 'R': {
             destinazione->current++;
             cursor = destinazione->current;
-            ltmp = destinazione->snext->lunghezza;
+            ltmp = STR_EXP * destinazione->lungsnext;
             if (where == 1 && cursor == ltmp) {
+                destinazione->lungsnext++;
+                block = destinazione->lungsnext;
+                destinazione->snext = realloc(destinazione->snext, sizeof(str)*block);
                 if (ltmp>=lunghezzabuffer){
-                    if (isfinished==1) {
-                        destinazione->snext->lunghezza += STR_RIGHT;
-                        destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
-                        control = destinazione->snext->text;
-                        for (; ltmp < destinazione->snext->lunghezza; ltmp++) 
-                            control[ltmp]='_';
-                    } else {
-                        destinazione->snext->lunghezza += STR_RIGHT;
-                        lunghezzabuffer += STR_RIGHT;
-                        tmp = ltmp;
-                        buffer = realloc(buffer, sizeof(char)*lunghezzabuffer);
-                        fgets(buffer+ltmp, STR_RIGHT, stdin);
-                        for (; ltmp < destinazione->snext->lunghezza; ltmp++){
-                            if (buffer[ltmp]=='\r' || buffer[ltmp]=='\n' || buffer[ltmp]=='\0'){
-                                if (buffer[ltmp]=='\n') {
-                                    buffer[ltmp]='_';
-                                    isfinished=true;
-                                }
-                                if (buffer[ltmp] == '\r') 
-                                            buffer[ltmp] = '_';
-                                        if (buffer[ltmp]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[ltmp]=getchar();
-                                            j=ltmp+1;
-                                            if (buffer[ltmp]=='\n') {
-                                                isfinished = true;
-                                                j= ltmp;
-                                            } else if (buffer[ltmp]=='\r')
-                                                j=ltmp;
-                                        } else j=ltmp;
-                                        for (;j<lunghezzabuffer;j++)
-                                            buffer[j]='_';
-                                        
-                                        goto inizializzato;
-                                }
-                            }
-                        }
-                        inizializzato: destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
-                        strncpy(destinazione->snext->text+tmp,buffer+tmp,STR_RIGHT);
+                    destinazione->snext[block-1] = malloc(sizeof(str));
+                    destinazione->snext[block-1]->shared = 1;
+                    destinazione->snext[block-1]->text = malloc(STR_EXP);
+                    control = destinazione->snext[block-1]->text;
+                    for (i = 0; i < STR_EXP; i++) {
+                        control[i]='_';
                     }
                 } else {
-                    destinazione->snext->lunghezza += STR_RIGHT;
-                    destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
-                    strncpy(destinazione->snext->text+ltmp,buffer+ltmp,STR_RIGHT);
-                    
+                    destinazione->snext[block-1] = malloc(sizeof(str));
+                    destinazione->snext[block-1]->shared = 1;
+                    destinazione->snext[block-1]->text = malloc(STR_EXP);
+                    control = destinazione->snext[block-1]->text;
+                    for (i = 0; i < STR_EXP && (ltmp+i) < lunghezzabuffer; i++) {
+                        control[i]=buffer[ltmp+i];
+                    }
+                    for (; i < STR_EXP; i++) 
+                        control[i] = '_';
                 }
-            }
-            break;   
+            }   
+            break;
         }
     }
     //Aggiungo in testa alla lista delle config la nuova config creata
     destinazione->next=newconfig;
     newconfig=destinazione;  
 }   
-void reset(conf *cnf) {
+void reset(conf *cnf, int elements) {
     // reset delle config
     conf *temp = cnf;
-    while (temp!=0 && elements!=0) {
-        temp = cnf;
-        temp=temp->next;
-        freeconfig(cnf);
+    while (temp!=0 && elements != 0/*&& elements!=0*/) {
         elements--;
+        cnf = temp;
+        if (elements!=0)
+            temp=temp->next;
+        freeconfig(cnf);
+        
     }
 }
 
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
+    oldelements--;
     elements++;
-    str *new = 0;
-    str1 *extrem = 0;
+    str *current = 0;
+    str * new = 0;
     int cursor, ltmp,j,tmp,nchunk;
     char *control;
+    int block;
+    int relativepos;
     //Modifico il carattere da modificare, se necessario;
     //Se shared=1, non è necessario fare un branch ma basta modificare
     if ((int)arco->cwrite != letto) {
         switch (where) {
             case 1: {
-                if (stato->snext->shared==1) {
-                    stato->snext->text[i]=arco->cwrite;
+                block = i/STR_EXP;
+                relativepos = i%STR_EXP;
+                current = stato->snext[block];
+                if (current->shared==1) {
+                    current->text[relativepos]=arco->cwrite;
                 } else {
-                    stato->snext->shared--;
-                    extrem=malloc(sizeof(str1));
-                    nchunk = (stato->current / STR_RIGHT +1)*STR_RIGHT;
-                    memstr1(extrem,stato->snext);
-                    extrem->lunghezza = stato->snext->lunghezza;
-                    //memmove(extrem,stato->snext,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*stato->snext->lunghezza);
-                    strncpy(extrem->text,stato->snext->text, stato->snext->lunghezza);
-                    extrem->text[i]=arco->cwrite;
-                    extrem->shared=1;
-                    stato->snext=extrem;
+                    current->shared--;
+                    new=malloc(sizeof(str));
+                    memstr(new,current);
+                    new->text=malloc(sizeof(char)*STR_EXP);
+                    strncpy(new->text,current->text, STR_EXP);
+                    new->text[relativepos]=arco->cwrite;
+                    new->shared=1;
+                    stato->snext[block]=new;
                     /*if (destinazione->sprev!=0) {
                         destinazione->sprev->shared++;
                     }*/
@@ -481,25 +517,24 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
                 break;
                 }
             case 0: {
-                if (stato->sprev->shared==1) {
-                    stato->sprev->text[-i-1]=arco->cwrite;
+                block = (-i-1)/STR_EXP;
+                relativepos = (-i-1)%STR_EXP;
+                current = stato->sprev[block];
+                if (current->shared==1) {
+                    current->text[relativepos]=arco->cwrite;
                 } else {
-                    stato->sprev->shared--;
-                    extrem=malloc(sizeof(str1));
-                    nchunk = ((-stato->current -1 )/ STR_LEFT +1)*STR_LEFT;
-                    memstr1(extrem, stato->sprev);
-                    extrem->lunghezza = stato->sprev->lunghezza;
-                    //memmove(extrem,stato->sprev,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*stato->sprev->lunghezza);
-                    strncpy(extrem->text,stato->sprev->text,stato->sprev->lunghezza);
-                    extrem->text[-i-1]=arco->cwrite;
-                    extrem->shared=1;
-                    stato->sprev=extrem;
+                    current->shared--;
+                    new=malloc(sizeof(str));
+                    nchunk = (stato->current / STR_RIGHT +1)*STR_RIGHT;
+                    memstr(new,current);
+                    new->text=malloc(sizeof(char)*STR_EXP);
+                    strncpy(new->text,current->text, STR_EXP);
+                    new->text[relativepos]=arco->cwrite;
+                    new->shared=1;
+                    stato->sprev[block]=new;
                     /*if (destinazione->snext!=0) {
                         destinazione->snext->shared++;
                     }*/
-                   
-
                 }
                 break;       
             }
@@ -511,81 +546,55 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
         case 'L': {
             stato->current--;
             cursor = stato->current;
-            if (where == 0) {
-                ltmp = stato->sprev->lunghezza;
-                if (cursor<-ltmp) {
-                    stato->sprev->lunghezza += STR_LEFT;
-                    stato->sprev->text = realloc(stato->sprev->text, sizeof(char)*stato->sprev->lunghezza);
-                    control = stato->sprev->text;
-                    for (; ltmp<stato->sprev->lunghezza; ltmp++) {
-                        control[ltmp]='_';
-                    }
+            ltmp = STR_EXP * stato->lungsprev;
+            if (where == 0 && cursor < -ltmp) {
+                stato->lungsprev += 1;
+                block = stato->lungsprev;
+                stato->sprev = realloc(stato->sprev, sizeof(str)*block);
+                stato->sprev[block-1] = malloc(sizeof(str));
+                stato->sprev[block-1]->shared = 1;
+                stato->sprev[block-1]->text = malloc(sizeof(char)*STR_EXP);
+                control = stato->sprev[block-1]->text;
+                for (i = 0; i < STR_EXP; i++) {
+                    control[i]='_';
                 }
-            }
+            }                    
             break;
         }
         case 'R': {
             stato->current++;
             cursor = stato->current;
-            ltmp = stato->snext->lunghezza;
-            tmp = ltmp;
+            ltmp = STR_EXP * stato->lungsnext;
             if (where == 1 && cursor == ltmp) {
-                if (ltmp >= lunghezzabuffer){
-                    if (isfinished==1) {
-                        stato->snext->lunghezza += STR_RIGHT;
-                        stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
-                        control = stato->snext->text;
-                        for (; ltmp < stato->snext->lunghezza; ltmp++) 
-                            control[ltmp]='_';
-                        } else {
-                                stato->snext->lunghezza += STR_RIGHT;
-                                lunghezzabuffer = stato->snext->lunghezza;
-                                buffer = realloc(buffer, lunghezzabuffer);
-                                fgets(buffer+ltmp, STR_RIGHT, stdin);
-                                for (; ltmp < stato->snext->lunghezza; ltmp++){
-                                    if (buffer[ltmp]=='\r' || buffer[ltmp]=='\n' || buffer[ltmp]=='\0'){
-                                        if (buffer[ltmp]=='\n') {
-                                            buffer[ltmp]='_';
-                                            isfinished=true;
-                                        }
-                                        if (buffer[ltmp] == '\r') 
-                                            buffer[ltmp] = '_';
-                                        if (buffer[ltmp]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[ltmp]=getchar();
-                                            j=ltmp+1;
-                                            if (buffer[ltmp]=='\n') {
-                                                isfinished = true;
-                                                j= ltmp;
-                                            } else if (buffer[ltmp]=='\r')
-                                                j=ltmp;
-                                        }
-                                            
-                                         else j=ltmp;
-                                                for (;j<lunghezzabuffer;j++){
-                                                    buffer[j]='_';
-                                            }
-                                        goto inizializzato;
-                                    }
-                                        
-                                    }
-                                }
-                                inizializzato: stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
-                                strncpy(stato->snext->text+tmp,buffer+tmp,STR_RIGHT);
-                            }
-                        } else {
-                            stato->snext->lunghezza += STR_RIGHT;
-                            stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
-                            strncpy(stato->snext->text+tmp,buffer+tmp,STR_RIGHT);
-                            
-                        }
+                stato->lungsnext++;
+                block = stato->lungsnext;
+                stato->snext = realloc(stato->snext, sizeof(str)*block);
+                if (ltmp>=lunghezzabuffer){
+                    stato->snext[block-1] = malloc(sizeof(str));
+                    stato->snext[block-1]->shared = 1;
+                    stato->snext[block-1]->text = malloc(sizeof(char)*STR_EXP);
+                    control = stato->snext[block-1]->text;
+                    for (i = 0; i < STR_EXP; i++) {
+                        control[i]='_';
                     }
-                    break;   
+                } else {
+                    stato->snext[block-1] = malloc(sizeof(str));
+                    stato->snext[block-1]->shared = 1;
+                    stato->snext[block-1]->text = malloc(sizeof(char)*STR_EXP);
+                    control = stato->snext[block-1]->text;
+                    for (i = 0; i < STR_EXP && (ltmp+i) < lunghezzabuffer; i++) {
+                        control[i]=buffer[ltmp+i];
+                    }
+                    for (; i < STR_EXP; i++) 
+                        control[i] = '_';
                 }
+            }   
+            break;
         }
-        //Aggiungo in testa 
-        stato->next=newconfig;
-        newconfig=stato;
+    }
+    //Aggiungo in testa 
+    stato->next=newconfig;
+    newconfig=stato;
 }
 
 
@@ -602,23 +611,22 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     dotrs *dafare;
     if (i >= 0){
         where = 1;
-        extrem=cnf->snext;
-        control = cnf->snext->text[i];
+        control = cnf->snext[i/STR_EXP]->text[i%STR_EXP];
     }else if (i < 0) {
         where = 0;
-        extrem=cnf->sprev;
-        control = cnf->sprev->text[-i-1];        
+        control = cnf->sprev[(-i-1)/STR_EXP]->text[(-i-1)%STR_EXP];        
     }
     int letto = (int) control;
-    //("è la %d conf che computo, e ho letto %c\n", numberconf, letto);
     trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
     while (list!=0) {
         if (list->startstate==cnf->state){
             dafare = list->archi;
             pozzo = false;
             while (dafare!=0){
-                if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
+                if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite) {
                     computing = true;
+                    goto daeliminare;
+                }
                 else if (dafare->states == -1) {
                     printf("1\n");
                     return true;
@@ -633,34 +641,22 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
         list=list->next;
     }
     computata:;
-    //Se non ci sono possibili transizioni, o è accettazione o è pozzo (non accettata)
+    
+    //Se non ci sono possibili transizioni, è pozzo (non accettata)
     if (pozzo == true) {
-        /*for (tmp=0;tmp<nfinal;tmp++)
-            if (cnf->state==final[tmp]){
-                printf("1\n");
-                return true;
-            }*/
-        // Se sono qui, è da cancellare la config, non accettata!
-        freeconfig(cnf);
+        daeliminare:;
+        cnf->next = todelete;
+        todelete = cnf;
+        elementstodelete++;
     }
-    
-    
-    //Per ogni config presente nella lista, computo; l'ultima ha una computazione speciale (non libero)
-    /*trs *now = 0;
-    while (queue!=0) {
-        now = queue;
-        if (now->next!=0)
-            computeconfignotlast(now, cnf, letto, i, where);
-        else computeconfiglast(now, cnf, letto, i, where);
-        queue = deletefirstinqueue(queue);
-    }*/
+
     return false;
 }
 /*Starto la configurazione, computo max-mosse
 - se la config è null prima, termina 0 | se non è null dopo, è U */
 void compute(){
     char *srt;
-    int tmp;
+    int tmp, tmpelements;
     startconfig();
     if (hofinito==0)
         goto fine;
@@ -668,17 +664,24 @@ void compute(){
     conf *temp=config;
     conf *prec = 0;
     while (i < max) {
-        while (temp!=0) {
+        tmpelements = oldelements;
+        while (temp!=0 && tmpelements!=0) {
             prec = temp;
             temp = temp->next;
-            if (searchandqueueandcompute(prec,&prec)) 
+            if (searchandqueueandcompute(prec,&prec)) {
+                config = prec;
                 goto reset1;
+            }
+            tmpelements--;
         }
         if (elements==0 && computing==false) {
             printf("0\n");
             goto reset2;
         } else if (elements == 0 && computing ==true) 
             goto nonfiniromai;
+        reset(todelete,elementstodelete);
+        elementstodelete = 0;
+        oldelements = elements;
         elements=0;
         config = newconfig;
         newconfig = 0;
@@ -686,15 +689,19 @@ void compute(){
         i++;      
     }
     nonfiniromai: printf("U\n");
-    reset1: reset(newconfig);
-    
-    //Controllo se la stringa è finita
+    reset1: reset(newconfig, elements);
+    reset(todelete, elementstodelete);
+    reset(config, oldelements);
+    //reset(config);
+    reset2:;
+    /*Controllo se la stringa è finita, non uso per ora
      reset2: if (isfinished==false) {
         srt = malloc(sizeof(char)*200000);
         hofinito = fgets(srt,200000,stdin);
         free (srt);
         srt=0;
-    }
+    }*/
+
     elements=0;
     computing=false;
     isfinished=false;
