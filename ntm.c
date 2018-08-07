@@ -26,6 +26,8 @@
 char prova = 'a';
 char *hofinito = &prova;
 
+bool sonosola = true;
+
 //Variabile per sapere se ho già letto fino alla fine della stringa
 bool isfinished=0;
 //Variabile per sapere se qualcosa non terminerà mai
@@ -79,7 +81,7 @@ indice - lista di stringhe che si espande a destra, grandezza iniziale: STR_IN
 espansione a sinistra / destra: STR_EX*/
 typedef struct str{
     char *text;
-    int shared;
+    long shared;
 } str;
 typedef struct str1{
     char *text;
@@ -276,7 +278,8 @@ void inizializza(str1 *new, int lunghezza){
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
     int j;
     elements++;
-    int cursor, ltmp, tmp, nchunk = 0;
+    int nchunk = 0;
+    long ltmp, tmp, cursor;
     str1 *extrem = 0;
     char *control;
     //Creo una nuova config identica alla precedente
@@ -289,7 +292,6 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
             case 1: {
                 extrem=malloc(sizeof(str1));
                 memstr1(extrem, stato->snext);
-                nchunk = (destinazione->current / STR_RIGHT +1)*STR_RIGHT;
                 extrem->lunghezza = destinazione->snext->lunghezza;
                 //memmove(extrem,stato->snext,sizeof(str1));
                 extrem->text=malloc(sizeof(char)*destinazione->snext->lunghezza);
@@ -303,7 +305,6 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
             case 0: {
                 extrem=malloc(sizeof(str1));
                 memstr1(extrem,stato->sprev);
-                nchunk = ((-destinazione->current -1 )/ STR_LEFT +1)*STR_LEFT;
                 extrem->lunghezza = destinazione->sprev->lunghezza;
                 //memmove(extrem,stato->sprev,sizeof(str1));
                 extrem->text=malloc(sizeof(char)*destinazione->sprev->lunghezza);
@@ -385,8 +386,10 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
     elements++;
     str *new = 0;
     str1 *extrem = 0;
-    int cursor, ltmp,j,tmp,nchunk;
+    int  j,nchunk;
+    long ltmp,tmp,cursor;
     char *control;
+    int oldstate = stato->state;
     //Modifico il carattere da modificare, se necessario;
     //Se shared=1, non è necessario fare un branch ma basta modificare
     if ((int)arco->cwrite != letto) {
@@ -446,6 +449,11 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
             if (where == 0) {
                 ltmp = stato->sprev->lunghezza;
                 if (cursor<-ltmp) {
+                    if (sonosola==true && oldstate == arco->states && letto == '_'  /*&& letto == arco->cwrite*/) {
+                        computing = true;
+                        freeconfig(stato);
+                        goto fine;
+                    }
                     stato->sprev->lunghezza += STR_LEFT;
                     stato->sprev->text = realloc(stato->sprev->text, sizeof(char)*stato->sprev->lunghezza);
                     control = stato->sprev->text;
@@ -463,6 +471,11 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
             tmp = ltmp;
             if (where == 1 && cursor == ltmp) {
                 if (ltmp >= lunghezzabuffer){
+                        if (sonosola==true && oldstate == arco->states && letto == '_' /*&& letto == arco->cwrite*/) {
+                        computing = true;
+                        freeconfig(stato);
+                        goto fine;
+                        }
                         stato->snext->lunghezza += STR_RIGHT;
                         stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
                         control = stato->snext->text;
@@ -486,11 +499,13 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
         //Aggiungo in testa 
         stato->next=newconfig;
         newconfig=stato;
+        fine:;
 }
 
 
 bool searchandqueueandcompute(conf *cnf, conf **valore){
     // Aggiungo alla Queue le transizioni possibili per la transizione
+    sonosola = true;
     str1 *extrem=0;
     bool pozzo = true;
     int tmp;
@@ -523,8 +538,10 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
                     printf("1\n");
                     return true;
                 }
-                else if (dafare->next!=0)
+                else if (dafare->next!=0) {
                     computeconfignotlast(dafare, cnf, letto, i, where);
+                    sonosola=false;
+                }
                 else computeconfiglast(dafare, cnf, letto, i, where);
                 dafare = dafare->next;
             }
