@@ -13,8 +13,8 @@
 #define HASH_MOD 256
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 64
-#define STR_LEFT 64
+#define STR_RIGHT 3
+#define STR_LEFT 3
 
 //libc libraries
 #include <stdio.h>
@@ -39,7 +39,7 @@ bool computing = false;
 
 typedef struct dotrs{
     struct dotrs *next;
-    char cwrite;
+    int cwrite;
     char movement; 
     int states;
 }dotrs;
@@ -69,7 +69,7 @@ long int elements = 0;
 
 //Knuth method
 int hash(int state){
-    return (state*(state+3))%HASH_MOD;
+    return (state)%HASH_MOD;
 }
 
 long long int max;
@@ -153,10 +153,10 @@ void readtransaction(){
     while (scanf("%d",&sstart)==1) {
         scanf(" %c %c %c %d", &cstart, &csubstitute,&transaction,&send);
         if (ingresso[(int)cstart]==0){
-            ingresso[(int)cstart]=calloc(HASH_MOD, sizeof(trs));
+            ingresso[cstart]=calloc(HASH_MOD, sizeof(trs));
         }
         h=hash(sstart);
-        insert((int)cstart,h,csubstitute,transaction,send, sstart);
+        insert((int)cstart,h,(int)csubstitute,transaction,send, sstart);
     }
 }
 
@@ -187,14 +187,11 @@ void readmax() {
 //Inizializzo la prima configurazione
 void startconfig() {
     //elements = 1;
-    buffer = malloc(sizeof(char)*STR_RIGHT);
-    hofinito = fgets(buffer, STR_RIGHT, stdin);
-    if (hofinito==0) {
-        hofinito = 0;
-        goto end;
-    }
+    scanf("%ms ", &buffer);
+    lunghezzabuffer = strlen(buffer);
     int i=0;
     int j;
+    char *control;
     config = malloc(sizeof(conf));
     config->next=0;
     config->snext=malloc(sizeof(str1));
@@ -205,42 +202,18 @@ void startconfig() {
     config->sprev->text=malloc(sizeof(char)*STR_LEFT);
     config->sprev->shared=1;
     config->sprev->lunghezza=STR_LEFT;
-    char *control = config->sprev->text;
+    control = config->sprev->text;
     for (i=0;i<STR_LEFT;i++)
         control[i]='_';
-    lunghezzabuffer = STR_RIGHT;
-    // Controllo se stringa finisce
-    for (i=0; i < STR_RIGHT; i++){
-        if (buffer[i]=='\r' || buffer[i]=='\n' || buffer[i]=='\0'){
-            if (buffer[i]=='\n') {
-                buffer[i]='_';
-                isfinished=true;
-            }
-            if (buffer[i] == '\r') 
-                                            buffer[i] = '_';
-                                        if (buffer[i]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[i]=getchar();
-                                            j=i+1;
-                                            if (buffer[i]=='\n') {
-                                                isfinished = true;
-                                                j= i;
-                                            } else if (buffer[i]=='\r')
-                                                j=i;
-                                        } else j=i;
-                                        for (;j<lunghezzabuffer;j++)
-                                            buffer[j]='_';
-                                        goto inizializzato;
-            }
-        }
-    }
-    inizializzato: config->state=0;
-    config->snext->text = malloc(sizeof(char)*lunghezzabuffer);
-    strncpy(config->snext->text, buffer, STR_RIGHT);
-    //printf("Letto %s\n", control);
+    config->state=0;
+    config->snext->text = malloc(sizeof(char)*STR_RIGHT);
+    control = config->snext->text;
+    for (i=0; i<lunghezzabuffer && i<STR_RIGHT;i++)
+        control[i] = buffer[i];
+    for (; i < STR_RIGHT; i++)
+        control[i] = '_';
     config->current=0;
     elements=0;
-    end:; 
 
 }
 
@@ -370,8 +343,7 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
             cursor = destinazione->current;
             ltmp = destinazione->snext->lunghezza;
             if (where == 1 && cursor == ltmp) {
-                if (ltmp>=lunghezzabuffer){
-                    if (isfinished==1) {
+                if (ltmp >= lunghezzabuffer){
                         destinazione->snext->lunghezza += STR_RIGHT;
                         destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
                         control = destinazione->snext->text;
@@ -379,42 +351,14 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
                             control[ltmp]='_';
                     } else {
                         destinazione->snext->lunghezza += STR_RIGHT;
-                        lunghezzabuffer += STR_RIGHT;
                         tmp = ltmp;
-                        buffer = realloc(buffer, sizeof(char)*lunghezzabuffer);
-                        fgets(buffer+ltmp, STR_RIGHT, stdin);
-                        for (; ltmp < destinazione->snext->lunghezza; ltmp++){
-                            if (buffer[ltmp]=='\r' || buffer[ltmp]=='\n' || buffer[ltmp]=='\0'){
-                                if (buffer[ltmp]=='\n') {
-                                    buffer[ltmp]='_';
-                                    isfinished=true;
-                                }
-                                if (buffer[ltmp] == '\r') 
-                                            buffer[ltmp] = '_';
-                                        if (buffer[ltmp]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[ltmp]=getchar();
-                                            j=ltmp+1;
-                                            if (buffer[ltmp]=='\n') {
-                                                isfinished = true;
-                                                j= ltmp;
-                                            } else if (buffer[ltmp]=='\r')
-                                                j=ltmp;
-                                        } else j=ltmp;
-                                        for (;j<lunghezzabuffer;j++)
-                                            buffer[j]='_';
-                                        
-                                        goto inizializzato;
-                                }
-                            }
-                        }
-                        inizializzato: destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
-                        strncpy(destinazione->snext->text+tmp,buffer+tmp,STR_RIGHT);
-                    }
-                } else {
-                    destinazione->snext->lunghezza += STR_RIGHT;
-                    destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
-                    strncpy(destinazione->snext->text+ltmp,buffer+ltmp,STR_RIGHT);
+                        destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
+                        control = destinazione->snext->text;
+                        for (; ltmp<lunghezzabuffer && ltmp<tmp+STR_RIGHT;ltmp++)
+                            control[ltmp] = buffer[ltmp];
+                        for (; ltmp < tmp+STR_RIGHT; ltmp++)
+                            control[ltmp] = '_';
+                    
                     
                 }
             }
@@ -519,7 +463,6 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
             tmp = ltmp;
             if (where == 1 && cursor == ltmp) {
                 if (ltmp >= lunghezzabuffer){
-                    if (isfinished==1) {
                         stato->snext->lunghezza += STR_RIGHT;
                         stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
                         control = stato->snext->text;
@@ -527,45 +470,14 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
                             control[ltmp]='_';
                         } else {
                                 stato->snext->lunghezza += STR_RIGHT;
-                                lunghezzabuffer = stato->snext->lunghezza;
-                                buffer = realloc(buffer, lunghezzabuffer);
-                                fgets(buffer+ltmp, STR_RIGHT, stdin);
-                                for (; ltmp < stato->snext->lunghezza; ltmp++){
-                                    if (buffer[ltmp]=='\r' || buffer[ltmp]=='\n' || buffer[ltmp]=='\0'){
-                                        if (buffer[ltmp]=='\n') {
-                                            buffer[ltmp]='_';
-                                            isfinished=true;
-                                        }
-                                        if (buffer[ltmp] == '\r') 
-                                            buffer[ltmp] = '_';
-                                        if (buffer[ltmp]=='\0'){
-                                        if (isfinished != true) {
-                                            buffer[ltmp]=getchar();
-                                            j=ltmp+1;
-                                            if (buffer[ltmp]=='\n') {
-                                                isfinished = true;
-                                                j= ltmp;
-                                            } else if (buffer[ltmp]=='\r')
-                                                j=ltmp;
-                                        }
-                                            
-                                         else j=ltmp;
-                                                for (;j<lunghezzabuffer;j++){
-                                                    buffer[j]='_';
-                                            }
-                                        goto inizializzato;
-                                    }
-                                        
-                                    }
-                                }
-                                inizializzato: stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
-                                strncpy(stato->snext->text+tmp,buffer+tmp,STR_RIGHT);
-                            }
-                        } else {
-                            stato->snext->lunghezza += STR_RIGHT;
-                            stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
-                            strncpy(stato->snext->text+tmp,buffer+tmp,STR_RIGHT);
-                            
+                                stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
+                                control = stato->snext->text;
+                                tmp = ltmp;
+                                for (; ltmp < lunghezzabuffer && ltmp<tmp+STR_RIGHT;ltmp++)
+                                    control[ltmp] = buffer[ltmp];
+                                for (; ltmp < tmp+STR_RIGHT; ltmp++)
+                                    control[ltmp]='_';
+                                
                         }
                     }
                     break;   
@@ -650,8 +562,6 @@ void compute(){
     char *srt;
     int tmp;
     startconfig();
-    if (hofinito==0)
-        goto fine;
     long long int i = 0;
     conf *temp=config;
     conf *prec = 0;
@@ -664,7 +574,7 @@ void compute(){
         }
         if (elements==0 && computing==false) {
             printf("0\n");
-            goto reset2;
+            goto reset1;
         } else if (elements == 0 && computing ==true) 
             goto nonfiniromai;
         elements=0;
@@ -674,15 +584,8 @@ void compute(){
         i++;      
     }
     nonfiniromai: printf("U\n");
-    reset1: reset(newconfig);
-    
-    //Controllo se la stringa è finita
-     reset2: if (isfinished==false) {
-        srt = malloc(sizeof(char)*200000);
-        hofinito = fgets(srt,200000,stdin);
-        free (srt);
-        srt=0;
-    }
+    reset1:;
+    reset(newconfig);
     elements=0;
     computing=false;
     isfinished=false;
@@ -726,7 +629,7 @@ int main() {
     readfinal();
     readmax();
     checkfinals();
-    while (!feof(stdin) && hofinito!=0) {
+    while (!feof(stdin)) {
         compute();
 }
 
