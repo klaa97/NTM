@@ -15,7 +15,7 @@
 #define STR_IN 20
 #define STR_RIGHT 64
 #define STR_LEFT 64
-#define STR_EXP 2
+#define STR_EXP 3
 
 //libc libraries
 #include <stdio.h>
@@ -41,7 +41,7 @@ bool computing = false;
 typedef struct dotrs{
     struct dotrs *next;
     int cwrite;
-    int movement; 
+    char movement; 
     int states;
 }dotrs;
 
@@ -130,7 +130,7 @@ void startconfig();
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where);
 
 //Faccio il reset di tutte le conf a partire da cnf
-void reset(conf *cnf, int elements);
+void reset(conf *cnf);
 
 //Computo una last transizione
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where);
@@ -289,7 +289,6 @@ void startconfig() {
     p = config->snext;
     p=malloc(sizeof(*p));
     config->lungsnext = 1;
-    testo = *p;
     testo = malloc(sizeof(*testo));
     testo->shared = 1;
     testo->text = malloc(sizeof(char)*STR_EXP);
@@ -324,21 +323,20 @@ void freeconfig(conf *cnf) {
     str **npointer=cnf->snext;
     str **ppointer=cnf->sprev;
     bigger = (cnf->lungsnext >= cnf->lungsprev) ? 1 : 0;
-
     switch (bigger) {
                     case 1: {
                         for (i=0;i<cnf->lungsprev;i++){
                             npointer[i]->shared--;
                             ppointer[i]->shared--;
-                            if (npointer[i]==0)
-                                free(npointer);
-                            if (ppointer[i]==0)
-                                free(ppointer);
+                            if (npointer[i]->shared==0)
+                                free(npointer[i]);
+                            if (ppointer[i]->shared==0)
+                                free(ppointer[i]);
                         }
                         for (; i < cnf->lungsnext; i++){
                             npointer[i]->shared--;
                             if (npointer[i]==0)
-                                free(npointer);
+                                free(npointer[i]);
                         }
                         break;
                     }
@@ -346,15 +344,15 @@ void freeconfig(conf *cnf) {
                         for (i=0;i<cnf->lungsnext;i++){
                             npointer[i]->shared--;
                             ppointer[i]->shared--;
-                            if (npointer[i]==0)
-                                free(npointer);
+                            if (npointer[i]->shared==0)
+                                free(npointer[i]);
                             if (ppointer[i]==0)
-                                free(ppointer);
+                                free(ppointer[i]);
                         }
                         for (; i < cnf->lungsprev; i++){
                             ppointer[i]->shared--;
-                            if (ppointer[i]==0)
-                                free(ppointer);
+                            if (ppointer[i]->shared==0)
+                                free(ppointer[i]);
                         }
                         break;
                     }
@@ -386,8 +384,8 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
                 block = i/STR_EXP;
                 relativepos = i%STR_EXP;
                 current = stato->snext[block];
+                current->shared--;
                 new=malloc(sizeof(str));
-                memstr(new, current);
                 new->text=malloc(sizeof(char)*STR_EXP);
                 strncpy(new->text,current->text, STR_EXP);
                 new->text[relativepos]=arco->cwrite;
@@ -399,8 +397,8 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
                 block = (-i-1)/STR_EXP;
                 relativepos = (-1-i)%STR_EXP;
                 current = stato->sprev[block];
+                current->shared--;
                 new=malloc(sizeof(str));
-                memstr(new, current);
                 new->text=malloc(sizeof(char)*STR_EXP);
                 strncpy(new->text,current->text, STR_EXP);
                 new->text[relativepos]=arco->cwrite;
@@ -469,14 +467,13 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
     destinazione->next=newconfig;
     newconfig=destinazione;  
 }   
-void reset(conf *cnf, int elements) {
+void reset(conf *cnf) {
     // reset delle config
     conf *temp = cnf;
-    while (temp!=0 && elements != 0/*&& elements!=0*/) {
-        elements--;
+    while (temp!=0) {
+        //elements--;
         cnf = temp;
-        if (elements!=0)
-            temp=temp->next;
+        temp = temp->next;
         freeconfig(cnf);
         
     }
@@ -620,14 +617,14 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
     while (list!=0) {
         if (list->startstate==cnf->state){
-            dafare = list->archi;
-            pozzo = false;
+            dafare = list->archi;                
+            pozzo = true;
             while (dafare!=0){
-                if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite) {
+                /*if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite) {
                     computing = true;
                     goto daeliminare;
-                }
-                else if (dafare->states == -1) {
+                }*/
+                if (dafare->states == -1) {
                     printf("1\n");
                     return true;
                 }
@@ -641,13 +638,10 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
         list=list->next;
     }
     computata:;
-    
     //Se non ci sono possibili transizioni, è pozzo (non accettata)
     if (pozzo == true) {
         daeliminare:;
-        cnf->next = todelete;
-        todelete = cnf;
-        elementstodelete++;
+        freeconfig(cnf);
     }
 
     return false;
@@ -664,24 +658,19 @@ void compute(){
     conf *temp=config;
     conf *prec = 0;
     while (i < max) {
-        tmpelements = oldelements;
-        while (temp!=0 && tmpelements!=0) {
+        while (temp!=0) {
             prec = temp;
             temp = temp->next;
             if (searchandqueueandcompute(prec,&prec)) {
                 config = prec;
                 goto reset1;
             }
-            tmpelements--;
         }
         if (elements==0 && computing==false) {
             printf("0\n");
             goto reset2;
         } else if (elements == 0 && computing ==true) 
             goto nonfiniromai;
-        reset(todelete,elementstodelete);
-        elementstodelete = 0;
-        oldelements = elements;
         elements=0;
         config = newconfig;
         newconfig = 0;
@@ -689,9 +678,12 @@ void compute(){
         i++;      
     }
     nonfiniromai: printf("U\n");
-    reset1: reset(newconfig, elements);
+    reset1:;
+    reset(newconfig);
+    reset(config);
+    /*reset1: reset(newconfig, elements);
     reset(todelete, elementstodelete);
-    reset(config, oldelements);
+    reset(config, oldelements);*/
     //reset(config);
     reset2:;
     /*Controllo se la stringa è finita, non uso per ora
