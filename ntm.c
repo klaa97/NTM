@@ -13,8 +13,8 @@
 #define HASH_MOD 256
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 3
-#define STR_LEFT 3
+#define STR_RIGHT 4
+#define STR_LEFT 4
 
 //libc libraries
 #include <stdio.h>
@@ -61,6 +61,7 @@ trs **ingresso[127];
 int* final;
 int nfinal;
 
+bool pozzo = true;
 
 //Puntatore a buffer di ingresso
 char *buffer = 0;
@@ -73,6 +74,8 @@ long int elements = 0;
 int hash(int state){
     return (state)%HASH_MOD;
 }
+
+int oldelements = 0;
 
 long long int max;
 
@@ -198,7 +201,6 @@ void startconfig() {
     config->next=0;
     config->snext=malloc(sizeof(str1));
     config->snext->shared = 1;
-    config->snext->text=malloc(sizeof(char)*STR_RIGHT);
     config->snext->lunghezza=STR_RIGHT;
     config->sprev=malloc(sizeof(str1));
     config->sprev->text=malloc(sizeof(char)*STR_LEFT);
@@ -238,11 +240,14 @@ void freeconfig(conf *cnf) {
         free(cnf->sprev->text);
         free(cnf->sprev);
         
+        
     }
     if (cnf->snext->shared==0) {
         free(cnf->snext->text);
         free(cnf->snext);
+        
     }
+    
     free(cnf);
 }
 
@@ -276,7 +281,7 @@ void inizializza(str1 *new, int lunghezza){
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
-    int j;
+    int j, lunghezza;
     elements++;
     int nchunk = 0;
     long ltmp, tmp, cursor;
@@ -291,11 +296,10 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
        switch (where) {
             case 1: {
                 extrem=malloc(sizeof(str1));
-                memstr1(extrem, stato->snext);
-                extrem->lunghezza = destinazione->snext->lunghezza;
-                //memmove(extrem,stato->snext,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*destinazione->snext->lunghezza);
-                strncpy(extrem->text,stato->snext->text, destinazione->snext->lunghezza);
+                lunghezza = stato->snext->lunghezza;
+                extrem->lunghezza = lunghezza;
+                extrem->text=malloc(sizeof(char)*lunghezza);
+                strncpy(extrem->text,stato->snext->text, lunghezza);
                 extrem->text[i]=arco->cwrite;
                 extrem->shared=1;
                 destinazione->snext=extrem;
@@ -304,11 +308,10 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
             }
             case 0: {
                 extrem=malloc(sizeof(str1));
-                memstr1(extrem,stato->sprev);
-                extrem->lunghezza = destinazione->sprev->lunghezza;
-                //memmove(extrem,stato->sprev,sizeof(str1));
-                extrem->text=malloc(sizeof(char)*destinazione->sprev->lunghezza);
-                strncpy(extrem->text,stato->sprev->text, destinazione->sprev->lunghezza);
+                lunghezza = stato->sprev->lunghezza;
+                extrem->lunghezza = lunghezza;
+                extrem->text=malloc(sizeof(char)*lunghezza);
+                strncpy(extrem->text,stato->sprev->text, lunghezza);
                 extrem->text[-i-1]=arco->cwrite;
                 extrem->shared=1;
                 destinazione->sprev=extrem;
@@ -370,23 +373,23 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
     destinazione->next=newconfig;
     newconfig=destinazione;  
 }   
-void reset(conf *cnf) {
+void reset(conf *cnf, int downelements) {
     // reset delle config
     conf *temp = cnf;
-    while (temp!=0 && elements!=0) {
-        temp = cnf;
+    while (temp!=0) {
+        cnf = temp;
         temp=temp->next;
         freeconfig(cnf);
-        elements--;
+        
     }
-    cnf = 0;
+
+    
 }
 
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
-    elements++;
     str *new = 0;
     str1 *extrem = 0;
-    int  j,nchunk;
+    int  j,lunghezza;
     long ltmp,tmp,cursor;
     char *control;
     int oldstate = stato->state;
@@ -400,18 +403,13 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
                 } else {
                     stato->snext->shared--;
                     extrem=malloc(sizeof(str1));
-                    nchunk = (stato->current / STR_RIGHT +1)*STR_RIGHT;
-                    memstr1(extrem,stato->snext);
-                    extrem->lunghezza = stato->snext->lunghezza;
-                    //memmove(extrem,stato->snext,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*stato->snext->lunghezza);
-                    strncpy(extrem->text,stato->snext->text, stato->snext->lunghezza);
+                    lunghezza = stato->snext->lunghezza;
+                    extrem->lunghezza = lunghezza;
+                    extrem->text=malloc(sizeof(char)*lunghezza);
+                    strncpy(extrem->text,stato->snext->text, lunghezza);
                     extrem->text[i]=arco->cwrite;
                     extrem->shared=1;
                     stato->snext=extrem;
-                    /*if (destinazione->sprev!=0) {
-                        destinazione->sprev->shared++;
-                    }*/
                 }                
                 break;
                 }
@@ -421,12 +419,10 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
                 } else {
                     stato->sprev->shared--;
                     extrem=malloc(sizeof(str1));
-                    nchunk = ((-stato->current -1 )/ STR_LEFT +1)*STR_LEFT;
-                    memstr1(extrem, stato->sprev);
-                    extrem->lunghezza = stato->sprev->lunghezza;
-                    //memmove(extrem,stato->sprev,sizeof(str1));
-                    extrem->text=malloc(sizeof(char)*stato->sprev->lunghezza);
-                    strncpy(extrem->text,stato->sprev->text,stato->sprev->lunghezza);
+                    lunghezza = stato->sprev->lunghezza;
+                    extrem->lunghezza = lunghezza;
+                    extrem->text=malloc(sizeof(char)*lunghezza);
+                    strncpy(extrem->text,stato->sprev->text,lunghezza);
                     extrem->text[-i-1]=arco->cwrite;
                     extrem->shared=1;
                     stato->sprev=extrem;
@@ -499,7 +495,9 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
         //Aggiungo in testa 
         stato->next=newconfig;
         newconfig=stato;
+        elements++;
         fine:;
+        oldelements--;
 }
 
 
@@ -507,7 +505,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     // Aggiungo alla Queue le transizioni possibili per la transizione
     sonosola = true;
     str1 *extrem=0;
-    bool pozzo = true;
+    pozzo = true;
     int tmp;
     char control;
     trs *queue=0;
@@ -582,28 +580,39 @@ void compute(){
     long long int i = 0;
     conf *temp=config;
     conf *prec = 0;
+    newconfig = 0;
+    oldelements = 1;
     while (i < max) {
         while (temp!=0) {
             prec = temp;
             temp = temp->next;
-            if (searchandqueueandcompute(prec,&prec)) 
+            if (searchandqueueandcompute(prec,&prec)) {
+                reset(newconfig, elements);
+                reset(prec, oldelements);
                 goto reset1;
+                
+            }
+
         }
         if (elements==0 && computing==false) {
             printf("0\n");
             goto reset1;
-        } else if (elements == 0 && computing ==true) 
-            goto nonfiniromai;
+        } else if (elements == 0 && computing ==true) {
+            printf("U\n");
+            goto reset1;
+        }
+        oldelements = elements;
         elements=0;
         config = newconfig;
         newconfig = 0;
         temp = config;
         i++;      
     }
-    nonfiniromai: printf("U\n");
-    reset1:;
-    reset(newconfig);
-    elements=0;
+    printf("U\n");
+    reset(config, oldelements);
+
+    
+    reset1:elements=0;
     computing=false;
     isfinished=false;
     if (buffer!=0)
