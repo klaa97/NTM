@@ -12,8 +12,8 @@
 #define STATES_E 2
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 3
-#define STR_LEFT 3
+#define STR_RIGHT 16
+#define STR_LEFT 16
 #define HASH_MOD 2048
 
 //libc libraries
@@ -54,9 +54,11 @@ typedef struct trs{
 
 
 #include <string.h>
-trs **ingresso[127];
+dotrs ***ingresso;
 
 int maxstate = 0;
+
+int *maxx;
 
 //Stati finali
 int* final;
@@ -121,34 +123,20 @@ void memstr1(str1 *dest, str1 *prev) {
 }
 
 void insert(int start, int h, char csub, char tr, int sd, int sstart){
-    trs *temp = ingresso[start][h];
-    while (temp != 0){
-        if (sstart == temp->startstate)
-            goto found;
-        temp = temp->next;
-    }
-    // Se non ho trovato, creo trs
-    temp = malloc(sizeof(trs));
-    temp->startstate = sstart;
-    temp->next=ingresso[start][h];
-    ingresso[start][h]=temp;
-    temp->archi = 0;
-    found:;
     dotrs *el;
     el = malloc(sizeof(dotrs));
     el->cwrite=csub;
     el->movement=tr;
     el->states = sd;
-    el->next = temp->archi;
-    temp->archi = el; 
+    el->next = ingresso[start][h];
+    ingresso[start][h] = el; 
    //printf("da scrivere %c\n movimento %c\n stato %d\n",el->cwrite, el->movement, el->states);
 }
 
 void readtransaction(){
     int i;
-    for (i=0;i<127;i++){
-        ingresso[i]=0;
-    }
+    ingresso = calloc(127, sizeof(*ingresso));
+    maxx = calloc(127, sizeof(int));
     int h;
     int sstart;
     int send;
@@ -158,11 +146,13 @@ void readtransaction(){
     scanf("tr ");
     while (scanf("%d",&sstart)==1) {
         scanf(" %c %c %c %d", &cstart, &csubstitute,&transaction,&send);
-        if (ingresso[(int)cstart]==0){
+        if (ingresso[cstart]==0){
             ingresso[cstart]=calloc(HASH_MOD, sizeof(trs));
         }
+        if (sstart >= maxx[cstart])
+            maxx[cstart] = sstart+1;
         h=sstart;
-        insert((int)cstart,h,(int)csubstitute,transaction,send, sstart);
+        insert(cstart,h,csubstitute,transaction,send, sstart);
     }
 }
 
@@ -214,7 +204,7 @@ void startconfig() {
     config->snext->text = malloc(sizeof(char)*STR_RIGHT);
     control = config->snext->text;
     for (i=0; i<lunghezzabuffer && i<STR_RIGHT;i++)
-        control[i] = buffer[i];
+        control[i] = buffer[i];   
     for (; i < STR_RIGHT; i++)
         control[i] = '_';
     config->current=0;
@@ -513,7 +503,6 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     int h = hash(cnf->state);
     int i = cnf->current;
     bool where;
-    dotrs *dafare;
     if (i >= 0){
         where = 1;
         extrem=cnf->snext;
@@ -525,12 +514,9 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     }
     int letto = (int) control;
     //("è la %d conf che computo, e ho letto %c\n", numberconf, letto);
-    trs *list = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
-    while (list!=0) {
-        if (list->startstate==cnf->state){
-            dafare = list->archi;
-            pozzo = false;
-            while (dafare!=0){
+    dotrs *dafare = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
+    while (dafare!=0) {
+        pozzo = false;
                 if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
                     computing = true;
                 else if (dafare->states == -1) {
@@ -544,11 +530,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
                 else computeconfiglast(dafare, cnf, letto, i, where);
                 dafare = dafare->next;
             }
-            goto computata;
-        }
-        list=list->next;
-    }
-    computata:;
+            
     //Se non ci sono possibili transizioni, o è accettazione o è pozzo (non accettata)
     if (pozzo == true) {
         /*for (tmp=0;tmp<nfinal;tmp++)
@@ -575,42 +557,7 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
 /*Starto la configurazione, computo max-mosse
 - se la config è null prima, termina 0 | se non è null dopo, è U */
 void compute(){
-    
-}
-
-void checkfinals() {
-    long int i,j, k;
-    dotrs *dotrstemp;
-    trs *trstemp;
-    for (i=0;i<127;i++) {
-        if (ingresso[i]!=0) {
-            for (j=0;j<HASH_MOD;j++) {
-                trstemp = ingresso[i][j];
-                while (trstemp != 0) {
-                    dotrstemp = trstemp->archi;
-                    while (dotrstemp!=0) {
-                        for (k=0;k<nfinal;k++)
-                            if (dotrstemp->states==final[k]){
-                                dotrstemp->states = -1;
-                            }
-                        dotrstemp=dotrstemp->next;
-                    }
-                    trstemp=trstemp->next;
-                }
-            }   
-        }
-    }
-}
-
-
-int main() {
-    //int *final;
-    readtransaction();
-    readfinal();
-    readmax();
-    checkfinals();
-    while (!feof(stdin)) {
-        char *srt;
+    char *srt;
     int tmp;
     startconfig();
     long long int i = 0;
@@ -646,8 +593,6 @@ int main() {
     }
     printf("U\n");
     reset(config, oldelements);
-
-    
     reset1:elements=0;
     computing=false;
     isfinished=false;
@@ -658,6 +603,37 @@ int main() {
     config = 0;
     newconfig=0;
     fine:;
+}
+
+void checkfinals() {
+    long int i,j, k;
+    dotrs *dotrstemp;
+    for (i=0;i<127;i++) {
+        if (ingresso[i]!=0) {
+            for (j=0;j<maxx[i];j++) {
+                dotrstemp = ingresso[i][j];
+                while (dotrstemp != 0) {
+                        for (k=0;k<nfinal;k++)
+                            if (dotrstemp->states==final[k]){
+                                dotrstemp->states = -1;
+                            }
+                        dotrstemp=dotrstemp->next;
+                    }
+                }
+            }   
+        }
+    }
+
+
+
+int main() {
+    //int *final;
+    readtransaction();
+    readfinal();
+    readmax();
+    checkfinals();
+    while (!feof(stdin)) {
+        compute();
 }
 
 
