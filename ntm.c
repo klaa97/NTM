@@ -10,11 +10,11 @@
 /* Costanti moltiplicative */
 #define STATES_S 10
 #define STATES_E 2
-#define HASH_MOD 256
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 4
-#define STR_LEFT 4
+#define STR_RIGHT 3
+#define STR_LEFT 3
+#define HASH_MOD 2048
 
 //libc libraries
 #include <stdio.h>
@@ -25,7 +25,6 @@
 //Se legge eof, NULL!
 char prova = 'a';
 char *hofinito = &prova;
-
 bool sonosola = true;
 
 //Variabile per sapere se ho già letto fino alla fine della stringa
@@ -57,6 +56,8 @@ typedef struct trs{
 #include <string.h>
 trs **ingresso[127];
 
+int maxstate = 0;
+
 //Stati finali
 int* final;
 int nfinal;
@@ -72,7 +73,7 @@ long int elements = 0;
 
 //Knuth method
 int hash(int state){
-    return (state)%HASH_MOD;
+    return (state%1024);
 }
 
 int oldelements = 0;
@@ -88,15 +89,15 @@ typedef struct str{
 } str;
 typedef struct str1{
     char *text;
-    long shared;
-    long lunghezza;
+    int shared;
+    int lunghezza;
 } str1;
 typedef struct conf{
     str1 *sprev;
     str1 *snext;
     struct conf *next;
-    int state;
-    long current; // Puntatore alla posizone, negativo: prev | >=STR_IN: next
+    short int state;
+    int current; // Puntatore alla posizone, negativo: prev | >=STR_IN: next
 }conf;
 conf *config = 0; //Mantiene la testa della lista vecchia
 conf *newconfig = 0; //Mantiene testa lista nuova
@@ -160,7 +161,7 @@ void readtransaction(){
         if (ingresso[(int)cstart]==0){
             ingresso[cstart]=calloc(HASH_MOD, sizeof(trs));
         }
-        h=hash(sstart);
+        h=sstart;
         insert((int)cstart,h,(int)csubstitute,transaction,send, sstart);
     }
 }
@@ -574,7 +575,42 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
 /*Starto la configurazione, computo max-mosse
 - se la config è null prima, termina 0 | se non è null dopo, è U */
 void compute(){
-    char *srt;
+    
+}
+
+void checkfinals() {
+    long int i,j, k;
+    dotrs *dotrstemp;
+    trs *trstemp;
+    for (i=0;i<127;i++) {
+        if (ingresso[i]!=0) {
+            for (j=0;j<HASH_MOD;j++) {
+                trstemp = ingresso[i][j];
+                while (trstemp != 0) {
+                    dotrstemp = trstemp->archi;
+                    while (dotrstemp!=0) {
+                        for (k=0;k<nfinal;k++)
+                            if (dotrstemp->states==final[k]){
+                                dotrstemp->states = -1;
+                            }
+                        dotrstemp=dotrstemp->next;
+                    }
+                    trstemp=trstemp->next;
+                }
+            }   
+        }
+    }
+}
+
+
+int main() {
+    //int *final;
+    readtransaction();
+    readfinal();
+    readmax();
+    checkfinals();
+    while (!feof(stdin)) {
+        char *srt;
     int tmp;
     startconfig();
     long long int i = 0;
@@ -622,41 +658,6 @@ void compute(){
     config = 0;
     newconfig=0;
     fine:;
-}
-
-void checkfinals() {
-    long int i,j, k;
-    dotrs *dotrstemp;
-    trs *trstemp;
-    for (i=0;i<127;i++) {
-        if (ingresso[i]!=0) {
-            for (j=0;j<HASH_MOD;j++) {
-                trstemp = ingresso[i][j];
-                while (trstemp != 0) {
-                    dotrstemp = trstemp->archi;
-                    while (dotrstemp!=0) {
-                        for (k=0;k<nfinal;k++)
-                            if (dotrstemp->states==final[k]){
-                                dotrstemp->states = -1;
-                            }
-                        dotrstemp=dotrstemp->next;
-                    }
-                    trstemp=trstemp->next;
-                }
-            }   
-        }
-    }
-}
-
-
-int main() {
-    //int *final;
-    readtransaction();
-    readfinal();
-    readmax();
-    checkfinals();
-    while (!feof(stdin)) {
-        compute();
 }
 
 
