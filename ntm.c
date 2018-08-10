@@ -12,9 +12,9 @@
 #define STATES_E 2
 #define S_FINAL 30
 #define STR_IN 20
-#define STR_RIGHT 16
-#define STR_LEFT 16
-#define HASH_MOD 2048
+#define STR_RIGHT 128
+#define STR_LEFT 128
+#define HASH_MODD 256
 
 //libc libraries
 #include <stdio.h>
@@ -22,13 +22,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-//Se legge eof, NULL!
-char prova = 'a';
-char *hofinito = &prova;
 bool sonosola = true;
 
-//Variabile per sapere se ho già letto fino alla fine della stringa
-bool isfinished=0;
 //Variabile per sapere se qualcosa non terminerà mai
 bool computing = false;
 /* Struttura per transizioni
@@ -54,11 +49,12 @@ typedef struct trs{
 
 
 #include <string.h>
-dotrs ***ingresso;
+dotrs **ingresso[127];
 
-int maxstate = 0;
+int maxx[127];
+int HASH_MOD[127];
 
-int *maxx;
+
 
 //Stati finali
 int* final;
@@ -73,12 +69,7 @@ int lunghezzabuffer=0;
 
 long int elements = 0;
 
-//Knuth method
-int hash(int state){
-    return (state%1024);
-}
 
-int oldelements = 0;
 
 long long int max;
 
@@ -134,9 +125,13 @@ void insert(int start, int h, char csub, char tr, int sd, int sstart){
 }
 
 void readtransaction(){
-    int i;
-    ingresso = calloc(127, sizeof(*ingresso));
-    maxx = calloc(127, sizeof(int));
+    int i,tmp;
+    for (i=0; i<127;i++){
+        HASH_MOD[i] = HASH_MODD;
+        maxx[i] = 0;
+        ingresso[i] = 0;
+    }
+    conf **temp;
     int h;
     int sstart;
     int send;
@@ -147,10 +142,19 @@ void readtransaction(){
     while (scanf("%d",&sstart)==1) {
         scanf(" %c %c %c %d", &cstart, &csubstitute,&transaction,&send);
         if (ingresso[cstart]==0){
-            ingresso[cstart]=calloc(HASH_MOD, sizeof(trs));
+            ingresso[cstart]=calloc(HASH_MODD, sizeof(*temp));
         }
-        if (sstart >= maxx[cstart])
+        if (sstart >= maxx[cstart]) {
+            tmp = (sstart>send) ? sstart : send;
             maxx[cstart] = sstart+1;
+            if (maxx[cstart] >= HASH_MOD[cstart]) {
+                i = HASH_MOD[cstart];
+                HASH_MOD[cstart]= maxx[cstart]*2;
+                ingresso[cstart] = realloc(ingresso[cstart], sizeof(*temp)*HASH_MOD[cstart]);
+                for (;i < HASH_MOD[cstart]; i++)
+                    ingresso[cstart][i] = 0;
+            }
+        }
         h=sstart;
         insert(cstart,h,csubstitute,transaction,send, sstart);
     }
@@ -186,7 +190,6 @@ void startconfig() {
     scanf("%ms ", &buffer);
     lunghezzabuffer = strlen(buffer);
     int i=0;
-    int j;
     char *control;
     config = malloc(sizeof(conf));
     config->next=0;
@@ -272,9 +275,8 @@ void inizializza(str1 *new, int lunghezza){
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove
 void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
-    int j, lunghezza;
+    int lunghezza;
     elements++;
-    int nchunk = 0;
     long ltmp, tmp, cursor;
     str1 *extrem = 0;
     char *control;
@@ -364,7 +366,7 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
     destinazione->next=newconfig;
     newconfig=destinazione;  
 }   
-void reset(conf *cnf, int downelements) {
+void reset(conf *cnf) {
     // reset delle config
     conf *temp = cnf;
     while (temp!=0) {
@@ -378,9 +380,8 @@ void reset(conf *cnf, int downelements) {
 }
 
 void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
-    str *new = 0;
     str1 *extrem = 0;
-    int  j,lunghezza;
+    int  lunghezza;
     long ltmp,tmp,cursor;
     char *control;
     int oldstate = stato->state;
@@ -488,8 +489,7 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
         newconfig=stato;
         elements++;
         fine:;
-        oldelements--;
-}
+    }
 
 
 bool searchandqueueandcompute(conf *cnf, conf **valore){
@@ -497,10 +497,9 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     sonosola = true;
     str1 *extrem=0;
     pozzo = true;
-    int tmp;
+    dotrs *dafare = 0;
     char control;
-    trs *queue=0;
-    int h = hash(cnf->state);
+    int h = cnf->state;
     int i = cnf->current;
     bool where;
     if (i >= 0){
@@ -514,7 +513,8 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
     }
     int letto = (int) control;
     //("è la %d conf che computo, e ho letto %c\n", numberconf, letto);
-    dotrs *dafare = (ingresso[letto]!=0) ? ingresso[letto][h] : 0;
+    if (ingresso[letto]!=0 && maxx[letto] >= cnf->state)
+        dafare = ingresso[letto][h];
     while (dafare!=0) {
         pozzo = false;
                 if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
@@ -557,21 +557,19 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
 /*Starto la configurazione, computo max-mosse
 - se la config è null prima, termina 0 | se non è null dopo, è U */
 void compute(){
-    char *srt;
     int tmp;
     startconfig();
     long long int i = 0;
     conf *temp=config;
     conf *prec = 0;
     newconfig = 0;
-    oldelements = 1;
     while (i < max) {
         while (temp!=0) {
             prec = temp;
             temp = temp->next;
             if (searchandqueueandcompute(prec,&prec)) {
-                reset(newconfig, elements);
-                reset(prec, oldelements);
+                reset(newconfig);
+                reset(prec);
                 goto reset1;
                 
             }
@@ -584,7 +582,6 @@ void compute(){
             printf("U\n");
             goto reset1;
         }
-        oldelements = elements;
         elements=0;
         config = newconfig;
         newconfig = 0;
@@ -592,10 +589,9 @@ void compute(){
         i++;      
     }
     printf("U\n");
-    reset(config, oldelements);
+    reset(config);
     reset1:elements=0;
     computing=false;
-    isfinished=false;
     if (buffer!=0)
         free(buffer);
     buffer = 0;
