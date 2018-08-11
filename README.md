@@ -28,7 +28,7 @@ run
 * On the line after *tr* there is a list of 5-tuple, separated by a newline,describing all the transactions, where given the state *S* the machine is currently in *and* the symbol *c*, it replaces *c* with *w*, moves the head of *M* (three values, *L* (left), *R* (right) and *S* (stop)), and go to state *E*.
 * On the line after *acc*, there is a the set of final states, separated by a newline. By convention, the machine crash on final states.
 * On the line after *max*, there is the number of maximum step for each non-deterministic branch that the machine will compute.
-* On the line after run, there is the set of the input string that the machine will tests, separated by a newline.
+* On the line after *run*, there is the set of the input string that the machine will tests, separated by a newline.
 
 ## Output
 The machine can return three values:
