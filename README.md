@@ -5,7 +5,7 @@ Memory and time efficient non-deterministic Turing Machine single tape  simulato
 It can be compiled with gcc easily.
 ```
 gcc -o ntm ntm.c
-./ntm.c < input.txt
+./ntm < input.txt
 ```
 
 ## Assumptions
