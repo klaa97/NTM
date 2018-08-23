@@ -11,8 +11,8 @@
 #define S_FINAL 30
 #define STR_IN 20
 #define STR_RIGHT 128
-#define STR_LEFT 128
-#define HASH_MODD 256
+#define STR_LEFT 128   
+#define HASH_MODD 2
 
 //libc libraries
 #include <stdio.h>
@@ -101,16 +101,16 @@ void startconfig();
 void freeconfig(conf *cnf);
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove (non ultima)
-void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where);
+int computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where);
 
 //Resetto le config successive a cnf 
 void reset(conf *cnf);
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove (ultima)
-void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where);
+int computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where);
 
 // Cerco le transizioni per config e computo
-bool searchandqueueandcompute(conf *cnf, conf **valore);
+bool searchandqueueandcompute(conf *cnf, int i);
 
 /*Starto la configurazione, computo max-mosse
 - se la config è null prima, termina 0 | se non è null dopo, è U */
@@ -176,7 +176,7 @@ void readtransaction(){
         }
         if (sstart >= maxx[cstart]) {
             tmp = (sstart>send) ? sstart : send;
-            maxx[cstart] = sstart+1;
+            maxx[cstart] = tmp+1;
             if (maxx[cstart] >= HASH_MOD[cstart]) {
                 i = HASH_MOD[cstart];
                 HASH_MOD[cstart]= maxx[cstart]*2;
@@ -240,7 +240,6 @@ void startconfig() {
         control[i] = '_';
     config->current=0;
     elements=0;
-
 }
 
 void freeconfig(conf *cnf) {
@@ -263,13 +262,14 @@ void freeconfig(conf *cnf) {
 }
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove (non ultima)
-void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
-    int lunghezza,ltmp, tmp, cursor;
+int computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where){
+    int lunghezza,ltmp, tmp, cursor, new_letto;
     str1 *extrem = 0;
     char *control;
     //Creo una nuova config identica alla precedente
     conf *destinazione = malloc(sizeof(conf));
     memconf(destinazione,stato);
+    new_letto = arco->cwrite;
     //memmove(destinazione,stato,sizeof(conf));
     //funzione per fare un branch e creare una nuova stringa se necessario
     if ((int)arco->cwrite != letto) {
@@ -319,7 +319,9 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
                 for (; ltmp < destinazione->sprev->lunghezza; ltmp++) {
                     control[ltmp]='_';
                 }
-            }                    
+                new_letto = '_';
+            }
+             else new_letto = (cursor<0) ? destinazione->sprev->text[-1-cursor] : destinazione->snext->text[cursor];                    
             break;
         }
         case 'R': {
@@ -333,23 +335,31 @@ void computeconfignotlast(dotrs *arco, conf *stato, int letto, int i, int where)
                     control = destinazione->snext->text;
                     for (; ltmp < destinazione->snext->lunghezza; ltmp++) 
                         control[ltmp]='_';
+                    new_letto = '_';
                 } else {
                     destinazione->snext->lunghezza += STR_RIGHT;
                     tmp = ltmp;
                     destinazione->snext->text = realloc(destinazione->snext->text, sizeof(char)*destinazione->snext->lunghezza);
                     control = destinazione->snext->text;
+                    new_letto = buffer[ltmp];
                     for (; ltmp<lunghezzabuffer && ltmp<tmp+STR_RIGHT;ltmp++)
                         control[ltmp] = buffer[ltmp];
                     for (; ltmp < tmp+STR_RIGHT; ltmp++)
                         control[ltmp] = '_'; 
                 }
-            }
+            } else new_letto = (cursor<0) ? destinazione->sprev->text[-1-cursor] : destinazione->snext->text[cursor];
             break;   
         }
     }
     //Aggiungo in testa alla lista delle config la nuova config creata
+    if (ingresso[new_letto]==0 || (maxx[new_letto] < arco->states) || (maxx[new_letto] >= arco->states &&ingresso[new_letto][arco->states]==0 )) {
+            freeconfig(destinazione);
+            goto fine;
+        }
     destinazione->next=newconfig;
-    newconfig=destinazione;  
+    newconfig=destinazione;
+    elements++;
+    fine:;
 }   
 
 //Resetto le config successive a cnf 
@@ -363,12 +373,13 @@ void reset(conf *cnf) {
 }
 
 //Modifico la config a seconda della transizione, aggiungendo in testa le nuove (ultima)
-void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
+int computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
     str1 *extrem = 0;
-    int  lunghezza;
+    int  lunghezza,new_letto;
     long ltmp,tmp,cursor;
     char *control;
     int oldstate = stato->state;
+    new_letto = arco->cwrite;
     //Modifico il carattere da modificare, se necessario;
     //Se shared=1, non è necessario fare un branch ma basta modificare
     if ((int)arco->cwrite != letto) {
@@ -413,22 +424,21 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
         case 'L': {
             stato->current--;
             cursor = stato->current;
-            if (where == 0) {
-                ltmp = stato->sprev->lunghezza;
-                if (cursor<-ltmp) {
-                    if (sonosola==true && oldstate == arco->states && letto == '_'  /*&& letto == arco->cwrite*/) {
-                        computing = true;
-                        freeconfig(stato);
-                        goto fine;
-                    }
-                    stato->sprev->lunghezza += STR_LEFT;
-                    stato->sprev->text = realloc(stato->sprev->text, sizeof(char)*stato->sprev->lunghezza);
-                    control = stato->sprev->text;
-                    for (; ltmp<stato->sprev->lunghezza; ltmp++) {
-                        control[ltmp]='_';
-                    }
+            ltmp = stato->sprev->lunghezza;
+            if (where == 0 && cursor<-ltmp) {
+                if (sonosola==true && oldstate == arco->states && letto == '_'  /*&& letto == arco->cwrite*/) {
+                    computing = true;
+                    freeconfig(stato);
+                    goto fine;
                 }
-            }
+                stato->sprev->lunghezza += STR_LEFT;
+                stato->sprev->text = realloc(stato->sprev->text, sizeof(char)*stato->sprev->lunghezza);
+                control = stato->sprev->text;
+                for (; ltmp<stato->sprev->lunghezza; ltmp++) {
+                    control[ltmp]='_';
+                }
+                new_letto = '_';
+            } else new_letto = (cursor<0) ? stato->sprev->text[-cursor-1] : stato->snext->text[cursor]; 
             break;
         }
         case 'R': {
@@ -448,22 +458,28 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
                     control = stato->snext->text;
                     for (; ltmp < stato->snext->lunghezza; ltmp++) 
                         control[ltmp]='_';
+                    new_letto = '_';
+                    
                 } else {
                     stato->snext->lunghezza += STR_RIGHT;
                     stato->snext->text = realloc(stato->snext->text, sizeof(char)*stato->snext->lunghezza);
                     control = stato->snext->text;
                     tmp = ltmp;
+                    new_letto = buffer[ltmp];
                     for (; ltmp < lunghezzabuffer && ltmp<tmp+STR_RIGHT;ltmp++)
                         control[ltmp] = buffer[ltmp];
                     for (; ltmp < tmp+STR_RIGHT; ltmp++)
                         control[ltmp]='_';
-                    
                 }
-            }
-                    break;   
+            } else new_letto = (cursor<0) ? stato->sprev->text[-cursor-1] : stato->snext->text[cursor];
+            break;   
         }
     }
         //Aggiungo in testa 
+        if (ingresso[new_letto]==0 || (maxx[new_letto] < arco->states) || (maxx[new_letto] >= arco->states &&ingresso[new_letto][arco->states]==0 )) {
+            freeconfig(stato);
+            goto fine;
+        }
         stato->next=newconfig;
         newconfig=stato;
         elements++;
@@ -471,10 +487,10 @@ void computeconfiglast(dotrs *arco, conf *stato, int letto, int i, int where) {
     }
 
 
-bool searchandqueueandcompute(conf *cnf, conf **valore){
+bool searchandqueueandcompute(conf *cnf, int comp){
+    int new;
     sonosola = true;
     str1 *extrem=0;
-    pozzo = true;
     dotrs *dafare = 0;
     char control;
     int h = cnf->state;
@@ -490,29 +506,26 @@ bool searchandqueueandcompute(conf *cnf, conf **valore){
         control = cnf->sprev->text[-i-1];        
     }
     int letto = (int) control;
-    if (ingresso[letto]!=0 && maxx[letto] >= cnf->state)
-        dafare = ingresso[letto][h];
-    else goto nonaccettata;
+    if (comp == 0 && ingresso[letto]==0 && ((maxx[letto] < cnf->state) || (maxx[letto] >= cnf->state && ingresso[letto][cnf->state]==0 )))
+        goto nonaccettata;
+    else dafare = ingresso[letto][h];
     while (dafare!=0) {
-        pozzo = false;
-        if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
-            computing = true;
-        else if (dafare->states == -1) {
+        /*if (dafare->states == cnf->state && dafare->movement == 'S' && letto == dafare->cwrite)
+            computing = true;*/
+        if (dafare->states == -1) {
             printf("1\n");
             return true;
         }
         else if (dafare->next!=0) {
-            computeconfignotlast(dafare, cnf, letto, i, where);
+            new = computeconfignotlast(dafare, cnf, letto, i, where);
             sonosola=false;
         }
-        else computeconfiglast(dafare, cnf, letto, i, where);
+        else new = computeconfiglast(dafare, cnf, letto, i, where);
         dafare = dafare->next;
     }
-            
-    //Se non ci sono possibili transizioni, è pozzo (non accettata)
-    if (pozzo == true) {
-        nonaccettata: freeconfig(cnf);
-    }
+
+    return false;
+    nonaccettata: freeconfig(cnf);
     return false;
 }
 
@@ -529,14 +542,14 @@ void compute(){
         while (temp!=0) {
             prec = temp;
             temp = temp->next;
-            if (searchandqueueandcompute(prec,&prec)) {
+            if (searchandqueueandcompute(prec,i)) {
                 reset(newconfig);
                 reset(prec);
                 goto reset1;
-                
             }
         }
         if (elements==0 && computing==false) {
+            //printf("%d",i);
             printf("0\n");
             goto reset1;
         } else if (elements == 0 && computing ==true) {
@@ -551,14 +564,9 @@ void compute(){
     }
     printf("U\n");
     reset(config);
-    reset1:elements=0;
-    computing=false;
-    if (buffer!=0)
-        free(buffer);
-    buffer = 0;
-    lunghezzabuffer=0;
+    reset1:computing=false;
+    free(buffer);
     config = 0;
-    newconfig=0;
     fine:;
 }
 
