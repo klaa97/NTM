@@ -1,5 +1,5 @@
 # NTM
-Memory and time efficient non-deterministic Turing Machine single tape  simulator, with trivial loop checking, a stdin given template and a max number of steps before halting. 
+Non-deterministic Turing Machine single tape  simulator, with trivial loop checking, a stdin given template and a max number of steps before halting. 
 
 ## Running
 It can be compiled with gcc easily.
